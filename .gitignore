@@ -1,5 +1,7 @@
-# RAG
+# Victor
 rag/
+obs-planner/
+LLM.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
