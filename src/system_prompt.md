@@ -65,7 +65,7 @@ A: Create a configuration file, starting from config_default, but with:
 
 Q: What is the next time the satellite "STARLINK-5971" will be visible?
 A: Create a configuration file, starting from config_default, but with:
-        - "TLEFile" set to "LEO" or "BULK"
+        - "TLEFile" set to "LEO" or "BULK" (preferably BULK, don't use LEO)
         - "TimeStart" set to "Now"
         - "SearchTime" set to "72;00" (max time to search for the satellite)
         - "NameCriteria" set to "STARLINK-5971"
