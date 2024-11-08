@@ -43,32 +43,18 @@ def stream_str(text):
         time.sleep(0.01)
 
 
-def stream_obs_planner_output(yaml_content):
+def stream_obs_planner_output(**kwargs):
     """
-    Streams the output of the OBS planner to a generator.
-
-    This function redirects the standard output to a queue and runs the OBS planner
-    in a separate thread. The output is then yielded line by line until the planner
-    completes its execution.
-
-    Args:
-        yaml_content (dict): The configuration dictionary to be passed to the OBS planner.
-
-    Yields:
-        str: Lines of output from the OBS planner.
-
-    Example:
-        for line in stream_obs_planner_output(config):
-            print(line)
+    Stream the output of obs_planner.main() with the given keyword arguments.
+    All arguments are passed directly to obs_planner.main().
     """
-def stream_obs_planner_output(yaml_content):
     output_queue = queue.Queue()
+    error_queue = queue.Queue()
     
     class StreamToQueue:
         def __init__(self):
             self.queue = output_queue
         def write(self, message):
-            # Queue each write operation, preserving original content
             if message:
                 self.queue.put(message)
         def flush(self):
@@ -81,10 +67,12 @@ def stream_obs_planner_output(yaml_content):
 
     def run_obs_planner():
         try:
-            obs_planner.main(config_dict=yaml_content)
+            obs_planner.main(**kwargs)  # Pass all kwargs directly to main()
+        except Exception as e:
+            error_queue.put(e)
         finally:
-            sys.stdout.flush()  # Ensure any buffered content is flushed
-            output_queue.put(None)  # Signal completion
+            sys.stdout.flush()
+            output_queue.put(None)
 
     thread = threading.Thread(target=run_obs_planner)
     thread.start()
@@ -93,9 +81,18 @@ def stream_obs_planner_output(yaml_content):
     
     while True:
         try:
-            output = output_queue.get(timeout=1.0)  # Add timeout to prevent hanging
+            # Check for exceptions first
+            try:
+                exc = error_queue.get_nowait()
+                sys.stdout = old_stdout
+                thread.join()
+                raise exc  # Re-raise exception in main thread
+            except queue.Empty:
+                pass
+
+            output = output_queue.get(timeout=1.0)
             if output is None:
-                if buffer:  # Yield any remaining buffered content
+                if buffer:
                     yield buffer
                 break
                 
@@ -111,3 +108,10 @@ def stream_obs_planner_output(yaml_content):
 
     sys.stdout = old_stdout
     thread.join()
+
+    # Check one final time for exceptions after thread completion
+    try:
+        exc = error_queue.get_nowait()
+        raise exc
+    except queue.Empty:
+        pass

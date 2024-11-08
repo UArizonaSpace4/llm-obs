@@ -7,6 +7,7 @@ import yaml
 import sys
 import importlib.util
 from initialize import obs_planner
+import logging
 
 # Set up OpenAI API credentials
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -79,12 +80,15 @@ def prompt_handler(prompt):
         st.markdown(msg)
     
     with st.status("Running observation planner...", state="running") as status:
-        # Merge configurations and run the planner
-        yaml_content = {**default_conf, **yaml_content}
-        print(yaml_content)
-        st.write_stream(utils.stream_obs_planner_output(yaml_content))
-        status.update(label="Observation planner completed", state="complete")
-    
+        try:
+            yaml_content = {**default_conf, **yaml_content}  # Merge configurations and run the planner
+            print(yaml_content)
+            st.write_stream(utils.stream_obs_planner_output(config_dict=yaml_content,
+                                                            txt_to_json=False))
+            status.update(label="Observation planner completed", state="complete")
+        except Exception as e:
+            logging.exception(e)
+            status.update(label=f"Error running observation planner: {str(e)}", state="error")
 
 
 
