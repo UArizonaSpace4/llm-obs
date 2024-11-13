@@ -6,6 +6,7 @@ import queue
 import os
 import time
 from initialize import obs_planner
+import numpy as np
 
 def extract_valid_yaml(text):
     """Extract valid YAML content from text, including Markdown-formatted LLM responses."""
@@ -115,3 +116,38 @@ def stream_obs_planner_output(**kwargs):
         raise exc
     except queue.Empty:
         pass
+
+
+def read_tle_file(filename):
+    tle_dict = {}
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+        i = 0
+        while i < len(lines):
+            if lines[i].startswith('0'):
+                # Skip the satellite name line
+                tle_line1 = lines[i + 1].strip()
+                tle_line2 = lines[i + 2].strip()
+                # Extract NORAD ID from TLE line 1 (columns 3-7)
+                norad_id = tle_line1[2:7].strip()
+                tle_dict[norad_id] = (tle_line1, tle_line2)
+                i += 3
+            else:
+                i += 1
+    return tle_dict
+
+
+def create_ground_track(satellite, t0, t1, ts, sat_name):
+    # Generate 50 points between t0 and t1
+    times = np.linspace(t0, t1, 50)
+    times = ts.from_julian_date(times)
+    
+    # Calculate positions
+    positions = satellite.at(times)
+    lons, lats = positions.subpoint().longitude.degrees, positions.subpoint().latitude.degrees
+    
+    return {
+        'lon': lons,
+        'lat': lats,
+        'name': sat_name
+    }
