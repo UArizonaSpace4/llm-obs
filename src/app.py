@@ -5,11 +5,8 @@ import time
 import utils
 import yaml
 from initialize import obs_planner
-import logging #TODO: Add to requirements
-import pandas as pd #TODO: Add to requirements
-from skyfield.api import load, EarthSatellite #TODO: Add to requirements
-import plotly.graph_objects as go #TODO: Add to requirements
-from astropy.time import Time # TODO:Add to requirements
+import logging
+import pandas as pd
 
 # General config
 is_mock = os.getenv("IS_MOCK", False)
@@ -190,100 +187,24 @@ def prompt_handler(prompt):
             passages = pd.read_csv(passages_file, comment='#', 
                                    sep='\s+', engine='python', header=None)
             headers = [
-                "ID", "name", "epoch", "t0 [MJD]", "az0 [deg]", "el0 [deg]", 
-                "t1 [MJD]", "az1 [deg]", "el1 [deg]", "t2 [MJD]", "az2 [deg]", "el2 [deg]", 
+                "ID", "name", "TLE epoch", "t0 [JD]", "az0 [deg]", "el0 [deg]", 
+                "t1 [JD]", "az1 [deg]", "el1 [deg]", "t2 [JD]", "az2 [deg]", "el2 [deg]", 
                 "exposures", "filter", "exp_time", "delay_after", "bin"
             ]
             passages.columns = headers
             passages['ID'] = passages['ID'].astype(str).str.zfill(5)
             tle_dict = utils.read_tle_file(tle_file)
 
-            print(f"Passage IDs: {passages['ID'].unique()}")
-            print(f"TLE IDs: {list(tle_dict.keys())}")
             # Create a dataframe for display with fewer columns
-            display_df = passages[['ID', 'name', 't0 [MJD]', 't1 [MJD]', 'az0 [deg]', \
+            display_df = passages[['ID', 'name', 't0 [JD]', 't1 [JD]', 'az0 [deg]', \
                                    'el0 [deg]']]
 
             # Allow multiple selection of rows
             st.dataframe(display_df,hide_index=True,use_container_width=True)
 
-            # Create the map
-            fig = go.Figure()
-            
-            # Add base map
-            fig.add_trace(go.Scattergeo(
-                showlegend=False,
-                mode='lines',
-                line=dict(width=1, color='gray'),
-            ))
-            
-            # Time scale 
-            ts = load.timescale()
-
-            for _, sat_row in passages.iterrows():
-                sat_id = sat_row['ID']
-                sat_name = sat_row['name']
-                print(f"Processing satellite ID: {sat_id}, Name: {sat_name}")
-                
-                if sat_id in tle_dict:
-                    # Get satellite TLE
-                    print(f"Satellite {sat_name} found in TLE dictionary.")
-                    tle_lines = tle_dict[sat_id]
-                    satellite = EarthSatellite(tle_lines[0], tle_lines[1], sat_name, ts)
-                    
-                    # Calculate positions (e.g. 100 points between t0 and t2)
-                    t0 = Time(sat_row['t0 [MJD]'], format='mjd').datetime
-                    t2 = Time(sat_row['t2 [MJD]'], format='mjd').datetime
-                    times = pd.date_range(start=t0, end=t2, periods=100)
-                    
-                    # Convert times to positions
-                    positions = []
-                    for t in times:
-                        t_ts = ts.from_datetime(t)
-                        geocentric = satellite.at(t_ts)
-                        subpoint = geocentric.subpoint()
-                        positions.append((subpoint.longitude.degrees, 
-                                        subpoint.latitude.degrees))
-                    
-                    # Add trajectory to map
-                    lons, lats = zip(*positions)
-                    fig.add_trace(go.Scattergeo(
-                        lon=lons,
-                        lat=lats,
-                        mode='lines',
-                        name=sat_name,
-                        line=dict(width=2),
-                        legendgroup=sat_name,
-                        showlegend=True,
-                        customdata=[[sat_id, sat_row['t0 [MJD]'], sat_row['t1 [MJD]']]] * len(lons),
-                        hovertemplate=(
-                            "<b>%{name}</b><br>" +
-                            "ID: %{customdata[0]}<br>" +
-                            "Start: %{customdata[1]:.2f} MJD<br>" +
-                            "End: %{customdata[2]:.2f} MJD<br>" +
-                            "<extra></extra>"
-                        )
-                    ))
-                else:
-                    print(f"Satellite {sat_name} not found in TLE dictionary.")
-            
-            # # Update layout
-            fig.update_layout(
-                showlegend=True,
-                geo=dict(
-                    showland=True,
-                    showcountries=True,
-                    showocean=True,
-                    countrywidth=0.5,
-                    landcolor='rgb(243, 243, 243)',
-                    oceancolor='rgb(204, 229, 255)',
-                    projection_type='equirectangular',
-                ),
-                height=600,
-            )
-                
+            fig = utils.plot_passages(passages, tle_dict)
             # Display the map
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': True})
 
 
 
@@ -303,6 +224,7 @@ def append_user_prompt(prompt: str = None):
 # Streamlit app layout
 ######################################################################
 
+st.set_page_config(layout="wide")
 st.title("Observatory Chatbot")
 
 if len(st.session_state.messages) == 0:

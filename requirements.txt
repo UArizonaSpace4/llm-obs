@@ -1,3 +1,9 @@
 streamlit
 openai
 pyyaml
+logging
+pandas
+numpy
+astropy
+plotly
+skyfield
