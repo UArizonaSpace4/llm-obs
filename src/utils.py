@@ -49,10 +49,12 @@ def stream_str(text):
         time.sleep(0.01)
 
 
-def stream_obs_planner_output(**kwargs):
+def stream_function_output(func, **kwargs):
     """
-    Stream the output of obs_planner.main() with the given keyword arguments.
-    All arguments are passed directly to obs_planner.main().
+    Stream the output of any function with the given keyword arguments.
+    Args:
+        func: The function to execute
+        **kwargs: All arguments are passed directly to the function
     """
     output_queue = queue.Queue()
     error_queue = queue.Queue()
@@ -71,16 +73,16 @@ def stream_obs_planner_output(**kwargs):
     old_stdout = sys.stdout
     sys.stdout = StreamToQueue()
 
-    def run_obs_planner():
+    def run_function():
         try:
-            obs_planner.main(**kwargs)  # Pass all kwargs directly to main()
+            func(**kwargs)  # Call the passed function with kwargs
         except Exception as e:
             error_queue.put(e)
         finally:
             sys.stdout.flush()
             output_queue.put(None)
 
-    thread = threading.Thread(target=run_obs_planner)
+    thread = threading.Thread(target=run_function)
     thread.start()
 
     buffer = ''

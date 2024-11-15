@@ -1,6 +1,8 @@
 # Victor
 rag/
 obs_planner/
+obs_tasker/
+mock_data/
 LLM.txt
 
 # Byte-compiled / optimized / DLL files

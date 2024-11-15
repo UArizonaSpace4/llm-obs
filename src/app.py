@@ -5,11 +5,15 @@ import time
 import utils
 import yaml
 from initialize import obs_planner
+from initialize import obs_tasker
 import logging
 import pandas as pd
+from pathlib import Path
+import sys
 
 # General config
 is_mock = os.getenv("IS_MOCK", False)
+project_root = Path(__file__).parent.parent.absolute()
 
 # Set up OpenAI API credentials
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -167,7 +171,7 @@ def prompt_handler(prompt):
             display_and_save(yaml.dump(yaml_content, sort_keys=False, default_flow_style=False), type="code")
 
             if not is_mock:
-                st.write_stream(utils.stream_obs_planner_output(config_dict=yaml_content,
+                st.write_stream(utils.stream_function_output(obs_planner.main, config_dict=yaml_content,
                                                             txt_to_json=False))
             lbl = "Observation planner completed"
             state = "complete"
@@ -179,8 +183,9 @@ def prompt_handler(prompt):
         st.session_state.messages[-1].update({"label": lbl, "state": state})
     
     # Showing passages
-    passages_file = os.path.join(os.getenv("OBS_PLANNER_ROOT"), "examples", "2024_08_28__Passage_Galaxy.txt")
-    tle_file = os.path.join(os.getenv("OBS_PLANNER_ROOT"), "examples", "2024_08_28__TLE_GEO.txt")
+    if is_mock:
+        passages_file = os.path.join(project_root, "mock_data", "2024_11_15__Passage_Galaxy.txt")
+        tle_file = os.path.join(project_root, "mock_data", "2024_11_15__TLE_Galaxy.txt")
 
     with st.chat_message("assistant"):
         if passages_file and tle_file:
@@ -206,6 +211,34 @@ def prompt_handler(prompt):
             # Display the map
             st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': True})
 
+    with st.chat_message("assistant"):
+        display_and_save("Now I will call the observation tasker to schedule the above \
+                             passages for the Rapstor-II telescope", role="assistant")
+    
+    with st.status(label="Running observation tasker...", state="running") as status:
+        st.session_state.messages.append({"role": "status", "content": []})
+        try:
+            with open(os.path.join(os.getenv("OBS_TASKER_ROOT"), "config_files", 
+                                   "config_raptors2.yaml")) as f:
+                config_tasker = yaml.safe_load(f)
+
+            config_tasker["observation_data"]["day"] = "today" #TODO: Take from obs planner
+            config_tasker["observation_data"]["time"] = "twilight"
+            config_tasker["observation_data"]["path"] = os.path.join(project_root, "mock_data/")
+            config_tasker["observation_data"]["outpath"] = os.path.join(project_root, "mock_data/")
+            config_tasker["test"] = True 
+            display_and_save("Tasker configuration:")
+            display_and_save(yaml.dump(config_tasker, sort_keys=False, default_flow_style=False), type="code")
+            st.write_stream(utils.stream_function_output(obs_tasker.main, config_dict=config_tasker))
+            lbl = "Observation tasker completed"
+            state = "complete"
+        except Exception as e:
+            logging.exception(e)
+            st.write(e)
+            lbl = "Error running observation tasker"
+            state = "error"
+        status.update(label=lbl, state=state)
+        st.session_state.messages[-1].update({"label": lbl, "state": state})
 
 
 # Function to process the last user message
