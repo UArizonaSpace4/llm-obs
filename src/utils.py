@@ -11,6 +11,7 @@ from skyfield.api import load, EarthSatellite
 import plotly.graph_objects as go 
 from astropy.time import Time 
 import numpy as np
+import pandas as pd
 
 
 def extract_valid_yaml(text):
@@ -306,3 +307,24 @@ def plot_passages(passages_df, tle_dict):
     )
 
     return fig
+
+
+def serialize_content(content, content_type):
+    """
+    Serializes message content based on its type.
+
+    Args:
+        content: The message content to serialize.
+        content_type (str): The type of the content ('text', 'code', 'md', etc.).
+
+    Returns:
+        str: Serialized content as a string.
+    """
+    if content_type == "text" or content_type == "md":
+        return str(content)
+    elif content_type == "code":
+        return f"```{content}```"
+    elif isinstance(content, pd.DataFrame):
+        return content.to_markdown()
+    else:
+        return str(content)

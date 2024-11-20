@@ -10,19 +10,17 @@ import logging
 import pandas as pd
 from pathlib import Path
 import sys
+import json
+from lm_hackers import response, askgpt, prepare_context_messages
 
 # General config
-is_mock = os.getenv("IS_MOCK", False)
+is_mock = os.getenv("IS_MOCK", "False").lower() == "true"
 project_root = Path(__file__).parent.parent.absolute()
+tool_error = False
 
 # Set up OpenAI API credentials
 openai.api_key = os.getenv("OPENAI_API_KEY")
 client = openai.OpenAI()
-
-# Load default YAML configuration
-default_conf_path = os.path.join(os.getenv("OBS_PLANNER_ROOT"), "configs", "config_default.yaml")
-with open(default_conf_path, "r") as file:
-    default_conf = yaml.safe_load(file)
 
 
 #########################################################
@@ -55,35 +53,10 @@ def display_message(msg, type: str = "text"):
         st.text(msg)  # Default to text for unknown types
 
 
-def display_and_save(msg, type="text", role=None, append_to_last=True):
-    """"
-        Write a message to the chat and save it to the session state.
-
-        Args:
-            msg: The message to write
-            type: The type of message - 'text', 'code', or 'md'
-            role: The role of the speaker (user, assistant, status). If not provided, 
-            it will update the content of the last message appended
-            append_to_last: If True and role is None, it will append the message to the last
-            message, as an array of strings (same with the type). If False, it will replace the content.
-    """
-    display_message(msg, type)
-    if role:
-        st.session_state.messages.append({"role": role, "type": [type], "content": [msg]})
-    else:
-        if append_to_last and "content" in st.session_state.messages[-1]:
-            st.session_state.messages[-1]["content"].append(msg)
-        else:
-            st.session_state.messages[-1]["content"] = [msg]
-        if append_to_last and "type" in st.session_state.messages[-1]:
-            st.session_state.messages[-1]["type"].append(type)
-        else:
-            st.session_state.messages[-1]["type"] = [type]
-
 # Function to display chat messages
 def display_messages():
     for message in st.session_state.messages:
-        if message["role"] == "status":
+        if message["role"] == "tool":
             with st.status(label=message["label"], state=message["state"]):
                 if "content" in message:
                     if isinstance(message["content"], list):
@@ -100,72 +73,146 @@ def display_messages():
                     display_message(message["content"])
 
 
-# Generator function to stream data
-def stream_response(response):
-    for chunk in response:
-        content = chunk.choices[0].delta.content
-        yield content
-        time.sleep(0.01)  # Simulate delay for streaming effect
+def display_and_save(msg, type="text", role=None, append_to_last=True):
+    """
+        Write a message to the chat and save it to the session state.
 
-
-# Read system prompt from file
-with open("src/system_prompt.md", "r") as file:
-    system_prompt = file.read()
-
-
-def prompt_handler(prompt):   
-    # Show a status container while the model is thinking
-    with st.status("Creating configuration...", state="running") as status:
-        st.session_state.messages.append({"role": "status"})
-        if is_mock:
-            # Use default config for mockup
-            yaml_content = default_conf
+        Args:
+            msg: The message to write
+            type: The type of message - 'text', 'code', 'md', or None (unspecified)
+            role: The role of the speaker (user, assistant, status). If not provided, 
+                    it will update the content of the last message appended
+            append_to_last: If True and role is None, it will append the message to the last
+                    message, as an array of strings (same with the type). If False, 
+                    it will replace the content.
+    """
+    display_message(msg, type)
+    if role:
+        st.session_state.messages.append({"role": role, "type": [type], "content": [msg]})
+    else:
+        if append_to_last and "content" in st.session_state.messages[-1]:
+            st.session_state.messages[-1]["content"].append(msg)
         else:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=1,
-                max_tokens=2048,
-                top_p=1,
-                frequency_penalty=0,
-                presence_penalty=0,
-                stream=True
-            )
-            # Stream the response
-            assistant_response = st.write_stream(stream_response(response))
-            st.session_state.messages[-1].update({"content": assistant_response[0]})
-
-        if yaml_content:
-            lbl = "Configuration created"
-            state = "complete"
-            msg = "Configuration created successfully. I'll proceed to run the observation planner."
+            st.session_state.messages[-1]["content"] = [msg]
+        if append_to_last and "type" in st.session_state.messages[-1]:
+            st.session_state.messages[-1]["type"].append(type)
         else:
-            lbl = "Error creating configuration"
-            state = "error"
-            msg = "Sorry, I couldn't extract a valid configuration. Please try again."
-        status.update(label=lbl, state=state)
-        st.session_state.messages[-1].update({"label": lbl, "state": state})
+            st.session_state.messages[-1]["type"] = [type]
 
-    # Display assistant message
-    with st.chat_message("assistant"):
-        display_and_save(msg, role="assistant")
-        #st.markdown(msg)
-        #st.session_state.messages.append({"role": "assistant", "content": msg})
+
+def stream_response(compl, yield_in="content", sleep=0.01):
+    """
+    Streams the response from an API completion object and yields content incrementally.
+
+    This function processes completion chunks, extracts specified content, and maintains
+    a history of the stream in the session state. It can also simulate a streaming delay.
+
+    Args:
+        compl: The chat completion object with the response of the model
+        yield_in (str): The attribute to extract from each chunk's delta (default: "content")
+        sleep (float): Time in seconds to sleep between chunks for streaming effect (default: 0.01)
+
+    Yields:
+        str: Content extracted from each chunk based on the yield_in parameter
+
+    Note:
+        - Stores the stream history in st.session_state["last_stream"]
+        - If sleep is truthy, adds a 0.01s delay between chunks
+    """
+    st.session_state["last_stream"] = []
+    for chunk in compl:
+        content = getattr(chunk.choices[0].delta, yield_in, "")
+        if content is not None:
+            yield content
+        st.session_state["last_stream"].append(chunk.choices[0])
+        if sleep: time.sleep(0.01)  # Simulate delay for streaming effect
+
+
+def handle_stream_response_tool_calls():
+    """
+    Processes chunks of a streaming response to extract tool call information.
+    Returns:
+        dict: A dictionary where each key is a tool call index and each value is a dictionary containing
+              the tool call's id and function details (name and arguments).
+    The function processes the last stream stored in session state, extracts tool call information, 
+    and aggregates it into a dictionary.
+    """
+    tool_calls = {}
     
+    for chunk in st.session_state["last_stream"]:
+        delta = chunk.delta
+        if delta.tool_calls:
+            for tool_call in delta.tool_calls:
+                if tool_call.index not in tool_calls:
+                    tool_calls[tool_call.index] = {
+                        "id": tool_call.id,
+                        "function": {
+                            "name": "",
+                            "arguments": ""
+                        }
+                    }
+                
+                if tool_call.function.name:
+                    tool_calls[tool_call.index]["function"]["name"] += tool_call.function.name
+                if tool_call.function.arguments:
+                    tool_calls[tool_call.index]["function"]["arguments"] += tool_call.function.arguments
+    
+    return tool_calls
+
+
+def process_tool_call(tool_call):
+    """
+    Process an OpenAI tool call object and extract relevant information.
+    This function takes a tool call object and extracts its index, function name, and arguments.
+    If the tool call is invalid or missing required attributes, returns None.
+    Args:
+        tool_call: An OpenAI tool call object containing function call information
+    Returns:
+        dict: A dictionary containing:
+            - index (int): The index of the tool call
+            - function_name (str): The name of the function being called
+            - arguments (str): The arguments passed to the function
+        None: If the tool call is invalid or missing required attributes
+    Raises:
+        AttributeError: If the tool call object is malformed or missing required attributes
+    """
+    try:
+        if not tool_call or 'function' not in tool_call:
+            return None
+            
+        return {
+            "id": tool_call["id"],
+            "function_name": tool_call["function"]["name"],
+            "arguments": tool_call["function"]["arguments"]
+        }
+    except AttributeError as e:
+        print(f"Error processing tool call: {e}")
+        return None
+    
+
+def run_observation_planner(*config_parameters):
+    """
+    Run the observation planner tool with the provided arguments.
+    This function takes a list of arguments, passes them to the observation planner tool,
+    and returns the output.
+    Args:
+        *args: A list of arguments to pass to the observation planner tool
+    Returns:
+        Any: The output of the observation planner tool
+    """
+    global tool_error
+    # Show a status container while the model is thinking
     with st.status("Running observation planner...", state="running") as status:
-        st.session_state.messages.append({"role": "status", "content": []})
+        st.session_state.messages.append({"role": "tool"})
+        yaml_content = default_conf
+        yaml_content.update(config_parameters)
+    
         try:
             display_and_save("Default Configuration")
             display_and_save(yaml.dump(default_conf, sort_keys=False, default_flow_style=False), type="code")
 
             display_and_save("Your Configuration")
-            display_and_save(yaml.dump(yaml_content, sort_keys=False, default_flow_style=False), type="code")
-
-            # Merge configurations
-            yaml_content = {**default_conf, **yaml_content}
+            display_and_save(yaml.dump(config_parameters, sort_keys=False, default_flow_style=False), type="code")
 
             display_and_save("Merged Configuration")
             display_and_save(yaml.dump(yaml_content, sort_keys=False, default_flow_style=False), type="code")
@@ -177,75 +224,121 @@ def prompt_handler(prompt):
             state = "complete"
         except Exception as e:
             logging.exception(e)
+            st.write(e)
             lbl = "Error running observation planner"
             state = "error"
+            tool_error = True
         status.update(label=lbl, state=state)
         st.session_state.messages[-1].update({"label": lbl, "state": state})
     
     # Showing passages
-    if is_mock:
-        passages_file = os.path.join(project_root, "mock_data", "2024_11_15__Passage_Galaxy.txt")
-        tle_file = os.path.join(project_root, "mock_data", "2024_11_15__TLE_Galaxy.txt")
+    if not tool_error:
+        if is_mock:
+            passages_file = os.path.join(project_root, "mock_data", "2024_11_15__Passage_Galaxy.txt")
+            tle_file = os.path.join(project_root, "mock_data", "2024_11_15__TLE_Galaxy.txt")
+        else:
+            passages_file = os.path.join(project_root, "mock_data", "2024_11_15__Passage_Galaxy.txt")
+            tle_file = os.path.join(project_root, "mock_data", "2024_11_15__TLE_Galaxy.txt")
 
-    with st.chat_message("assistant"):
-        if passages_file and tle_file:
-            passages = pd.read_csv(passages_file, comment='#', 
-                                   sep='\s+', engine='python', header=None)
-            headers = [
-                "ID", "name", "TLE epoch", "t0 [JD]", "az0 [deg]", "el0 [deg]", 
-                "t1 [JD]", "az1 [deg]", "el1 [deg]", "t2 [JD]", "az2 [deg]", "el2 [deg]", 
-                "exposures", "filter", "exp_time", "delay_after", "bin"
-            ]
-            passages.columns = headers
-            passages['ID'] = passages['ID'].astype(str).str.zfill(5)
-            tle_dict = utils.read_tle_file(tle_file)
+        with st.chat_message("assistant"):
+            if passages_file and tle_file:
+                passages = pd.read_csv(passages_file, comment='#', 
+                                    sep='\s+', engine='python', header=None)
+                headers = [
+                    "ID", "name", "TLE epoch", "t0 [JD]", "az0 [deg]", "el0 [deg]", 
+                    "t1 [JD]", "az1 [deg]", "el1 [deg]", "t2 [JD]", "az2 [deg]", "el2 [deg]", 
+                    "exposures", "filter", "exp_time", "delay_after", "bin"
+                ]
+                passages.columns = headers
+                passages['ID'] = passages['ID'].astype(str).str.zfill(5)
+                tle_dict = utils.read_tle_file(tle_file)
 
-            # Create a dataframe for display with fewer columns
-            display_df = passages[['ID', 'name', 't0 [JD]', 't1 [JD]', 'az0 [deg]', \
-                                   'el0 [deg]']]
+                # Create a dataframe for display with fewer columns
+                display_df = passages[['ID', 'name', 't0 [JD]', 't1 [JD]', 't2 [JD]', \
+                                       'az0 [deg]', 'az1 [deg]', 'az2 [deg]', 'el0 [deg]', 
+                                       'el1 [deg]', 'el2 [deg]']]
 
-            # Allow multiple selection of rows
-            st.dataframe(display_df,hide_index=True,use_container_width=True)
+                display_and_save(display_df, role="assistant")
 
-            fig = utils.plot_passages(passages, tle_dict)
-            # Display the map
-            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': True})
+                fig = utils.plot_passages(passages, tle_dict)
+                display_and_save(fig)
 
-    with st.chat_message("assistant"):
-        display_and_save("Now I will call the observation tasker to schedule the above \
-                             passages for the Rapstor-II telescope", role="assistant")
+                # Call the LLM to explain the results
+                kwargs = preset.copy()
+                # No preset tools and context
+                del kwargs['messages']; del kwargs['tools'] ; del kwargs['parallel_tool_calls']
+                compl = askgpt(user = "The observation planner has finished. Answer the last user prompt",
+                       system = system_prompt, 
+                       context=prepare_context_messages(st.session_state.messages, n=None, exclude_tool=True),
+                       stream=True,
+                       **kwargs)
+                st.write_stream(stream_response(compl))
     
-    with st.status(label="Running observation tasker...", state="running") as status:
-        st.session_state.messages.append({"role": "status", "content": []})
-        try:
-            with open(os.path.join(os.getenv("OBS_TASKER_ROOT"), "config_files", 
-                                   "config_raptors2.yaml")) as f:
-                config_tasker = yaml.safe_load(f)
 
-            config_tasker["observation_data"]["day"] = "today" #TODO: Take from obs planner
-            config_tasker["observation_data"]["time"] = "twilight"
-            config_tasker["observation_data"]["path"] = os.path.join(project_root, "mock_data/")
-            config_tasker["observation_data"]["outpath"] = os.path.join(project_root, "mock_data/")
-            config_tasker["test"] = True 
-            display_and_save("Tasker configuration:")
-            display_and_save(yaml.dump(config_tasker, sort_keys=False, default_flow_style=False), type="code")
-            st.write_stream(utils.stream_function_output(obs_tasker.main, config_dict=config_tasker))
-            lbl = "Observation tasker completed"
-            state = "complete"
+def handle_tool_call(function_name, arguments):
+    args_dict = json.loads(arguments)
+    match function_name.lower():
+        case "run_observation_planner":
+            config_args = args_dict.get("config_args", [])
+            config_dict = {}
+            for param in config_args:
+                name, value = param.split(":", 1)
+                config_dict[name.strip()] = value.strip()
+            run_observation_planner(**config_dict)
+            
+        case "query_database":
+            # Run observation tasker
+            pass
+        case _:
+            raise ValueError(f"Unknown function name: {function_name}")
+
+
+def handle_user_prompt(prompt):   
+    """
+    Handles the prompt input by the user, interacts with the LLM to generate a response,
+    processes the response to create a configuration, and runs the corresponding tool, if neccesasry.
+    Args:
+        prompt (str): The input prompt provided by the user.
+    Returns:
+        None
+    Raises:
+        Exception: If there is an error during the tool execution.
+    """
+    global tool_error
+    response = client.chat.completions.create(
+        model=preset["model"],
+        messages= preset["messages"] + [{"role": "user", "content": prompt}],
+        temperature=preset["temperature"],
+        max_tokens=preset["max_tokens"],
+        top_p=preset["top_p"],
+        frequency_penalty=preset["frequency_penalty"],
+        presence_penalty=preset["presence_penalty"],
+        stream=True,
+        tool_choice="auto",
+        response_format={"type": "text"},
+        parallel_tool_calls=False,
+        tools=preset["tools"]
+    )
+    # Stream the response
+    with st.chat_message("assistant"):       
+        assistant_response = st.write_stream(stream_response(response))
+        st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+
+    if (st.session_state["last_stream"][-1].finish_reason == 'tool_calls'):
+        tool_calls = handle_stream_response_tool_calls()
+        try:
+            tool_call = process_tool_call(tool_calls[0])
+            if tool_call:
+                handle_tool_call(tool_call["function_name"], tool_call["arguments"])
+            else:
+                display_and_save("Error processing tool call", role="assistant")        
         except Exception as e:
             logging.exception(e)
             st.write(e)
-            lbl = "Error running observation tasker"
-            state = "error"
-        status.update(label=lbl, state=state)
-        st.session_state.messages[-1].update({"label": lbl, "state": state})
+            tool_error = True
+    else:
+        logging.info("No tool found to call")
 
-
-# Function to process the last user message
-def process_last_user_msg():
-    messages = st.session_state.messages
-    if messages[-1]["role"] == "user":
-        prompt_handler(messages[-1]["content"])
 
 # If None, it takes the session state key from the chat input
 def append_user_prompt(prompt: str = None):
@@ -256,6 +349,21 @@ def append_user_prompt(prompt: str = None):
 ######################################################################
 # Streamlit app layout
 ######################################################################
+
+# Read system prompt from file
+with open("src/prompts/planner_configurator.md", "r") as file:
+    system_prompt = file.read()
+
+# Load default YAML configuration
+default_conf_path = os.path.join(os.getenv("OBS_PLANNER_ROOT"), "configs", "config_default.yaml")
+with open(default_conf_path, "r") as file:
+    default_conf = yaml.safe_load(file)
+
+# Load preset (default call configuration taken from the playground)
+preset = {}
+with open("src/prompts/preset.json", "r") as file:
+    preset = json.load(file)
+    preset.pop('system', None) # the system prompt is taken separately
 
 st.set_page_config(layout="wide")
 st.title("Observatory Chatbot")
@@ -272,7 +380,9 @@ if len(st.session_state.messages) == 0:
             st.button(starter, on_click=append_user_prompt, args=(starter,))
 else:
     display_messages()
-    process_last_user_msg()
+    messages = st.session_state.messages
+    if messages[-1]["role"] == "user":
+        handle_user_prompt(messages[-1]["content"])
 
 # Chat input for user messages
 st.chat_input("Type your message here...", key="user_prompt", 
