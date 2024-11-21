@@ -13,8 +13,12 @@ COPY requirements.txt .
 RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install observation planner
+COPY obs_planner ./obs_planner
+RUN pip install -e ./obs_planner
+
 # Copy project files
-COPY . .
+# COPY . .
 
 # Expose Streamlit port
 EXPOSE 8501

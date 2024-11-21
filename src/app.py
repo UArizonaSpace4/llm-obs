@@ -1,10 +1,11 @@
+import sys
 import os
 import openai
 import streamlit as st
 import time
 import utils
 import yaml
-from initialize import obs_planner
+from pathlib import Path
 import logging
 import pandas as pd
 from pathlib import Path
@@ -25,8 +26,13 @@ DB_NAME = os.environ.get('DB_NAME', 'your_database_name')
 project_root = Path(__file__).parent.parent.absolute()
 is_mock = os.getenv("IS_MOCK", "False").lower() == "true"
 is_docker = os.getenv("IS_DOCKER", "False").lower() == "true"
-obs_planner_root = "/obs_planner" if is_docker else os.getenv("OBS_PLANNER_ROOT")
+obs_planner_root = "/app/obs_planner" if is_docker else os.getenv("OBS_PLANNER_ROOT")
 tool_error = False
+
+
+# Import observation planner
+sys.path.append(obs_planner_root)
+import src as obs_planner # src refers to the src folder in the observation planner
 
 # Set up OpenAI API credentials
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -374,6 +380,19 @@ default_conf_path = os.path.join(obs_planner_root, "configs", "config_default.ya
 with open(default_conf_path, "r") as file:
     default_conf = yaml.safe_load(file)
 
+    UserData = {"organization" : default_conf['User']['Organization'], \
+            "username": default_conf['User']['Username'], \
+            "user_unique_id": default_conf['User']['UserUniqueId'], \
+            "user_project": default_conf['User']['UserProject']}
+
+    db_credentials = {
+        "ENDPOINT_reader": DB_HOST,
+        "PORT" : 		DB_PORT,
+        "USER" : 		DB_USER,
+        "PASSWORD" : 	DB_PASSWORD,
+        "DATABASE" :  "targets"
+    }
+
 # Load preset (default call configuration taken from the playground)
 preset = {}
 with open("src/prompts/preset.json", "r") as file:
@@ -383,36 +402,32 @@ with open("src/prompts/preset.json", "r") as file:
 st.set_page_config(layout="wide")
 st.title("Observatory Chatbot")
 
-obs = obs_planner.txt2dict(passes_path= os.path.join(project_root, "mock_data", "2024_11_15__Passage_Galaxy.txt"), 
-                     telescope=default_conf["Telescope"],
-                     user_data=default_conf["UserData"])
-
-st.write(obs)
 
 
-# obs_planner.insert_obs_into_db(
-#     dict(ENDPOINT_reader=DB_HOST, PORT=DB_PORT, USER=DB_USER, PASSWORD=DB_PASSWORD, DATABASE=DB_NAME), 
-    
-#     )
+# obs = obs_planner.database.txt2dict(
+#                     passes_path= os.path.join(project_root, "mock_data", "2024_11_15__Passage_Galaxy.txt"), 
+#                     telescope=default_conf["General"]["Telescope"],
+#                     user_data=UserData)
 
 
+# obs_planner.database.insert_obs_into_db(credentials = db_credentials, obs = obs, table_name = "observations")
 
-# if len(st.session_state.messages) == 0:
-#     # Display starter buttons
-#     starters = [
-#         "🛰️ Is there any LEO satellite visible in the next 48 hours with a magnitude greater than 17?",
-#         "📡 Can you schedule an observation of the INTELSAT satellites tomorrow tonight?"
-#     ]
-#     columns = st.columns(len(starters))
-#     for col, starter in zip(columns, starters):
-#         with col:
-#             st.button(starter, on_click=append_user_prompt, args=(starter,))
-# else:
-#     display_messages()
-#     messages = st.session_state.messages
-#     if messages[-1]["role"] == "user":
-#         handle_user_prompt(messages[-1]["content"])
+if len(st.session_state.messages) == 0:
+    # Display starter buttons
+    starters = [
+        "🛰️ Is there any LEO satellite visible in the next 48 hours with a magnitude greater than 17?",
+        "📡 Can you schedule an observation of the INTELSAT satellites tomorrow tonight?"
+    ]
+    columns = st.columns(len(starters))
+    for col, starter in zip(columns, starters):
+        with col:
+            st.button(starter, on_click=append_user_prompt, args=(starter,))
+else:
+    display_messages()
+    messages = st.session_state.messages
+    if messages[-1]["role"] == "user":
+        handle_user_prompt(messages[-1]["content"])
 
-# # Chat input for user messages
-# st.chat_input("Type your message here...", key="user_prompt", 
-#               on_submit=append_user_prompt)
+# Chat input for user messages
+st.chat_input("Type your message here...", key="user_prompt", 
+              on_submit=append_user_prompt)

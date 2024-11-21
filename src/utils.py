@@ -5,7 +5,6 @@ import threading
 import queue
 import os
 import time
-from initialize import obs_planner
 import numpy as np
 from skyfield.api import load, EarthSatellite
 import plotly.graph_objects as go 
