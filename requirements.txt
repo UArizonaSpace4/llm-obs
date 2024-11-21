@@ -1,9 +1,11 @@
 streamlit
 openai
 pyyaml
-logging
 pandas
 numpy
 astropy
 plotly
 skyfield
+SQLAlchemy
+fastcore
+psycopg2-binary

@@ -5,17 +5,27 @@ import time
 import utils
 import yaml
 from initialize import obs_planner
-from initialize import obs_tasker
 import logging
 import pandas as pd
 from pathlib import Path
-import sys
 import json
-from lm_hackers import response, askgpt, prepare_context_messages
+from lm_hackers import askgpt, prepare_context_messages
+from sqlalchemy import create_engine # for development
+from db import Base # for development
 
 # General config
-is_mock = os.getenv("IS_MOCK", "False").lower() == "true"
+is_development = os.getenv("IS_DEVELOPMENT", "True").lower() == "true"
+# Get database connection parameters from environment variables or use defaults
+DB_HOST = os.environ.get('DB_HOST', 'localhost')
+DB_PORT = os.environ.get('DB_PORT', '5432')
+DB_USER = os.environ.get('DB_USER', 'postgres')
+DB_PASSWORD = os.environ.get('DB_PASSWORD', 'postgres')
+DB_NAME = os.environ.get('DB_NAME', 'your_database_name')
+
 project_root = Path(__file__).parent.parent.absolute()
+is_mock = os.getenv("IS_MOCK", "False").lower() == "true"
+is_docker = os.getenv("IS_DOCKER", "False").lower() == "true"
+obs_planner_root = "/obs_planner" if is_docker else os.getenv("OBS_PLANNER_ROOT")
 tool_error = False
 
 # Set up OpenAI API credentials
@@ -208,9 +218,6 @@ def run_observation_planner(*config_parameters):
         yaml_content.update(config_parameters)
     
         try:
-            display_and_save("Default Configuration")
-            display_and_save(yaml.dump(default_conf, sort_keys=False, default_flow_style=False), type="code")
-
             display_and_save("Your Configuration")
             display_and_save(yaml.dump(config_parameters, sort_keys=False, default_flow_style=False), type="code")
 
@@ -272,7 +279,9 @@ def run_observation_planner(*config_parameters):
                        context=prepare_context_messages(st.session_state.messages, n=None, exclude_tool=True),
                        stream=True,
                        **kwargs)
-                st.write_stream(stream_response(compl))
+                cntnt = st.write_stream(stream_response(compl))
+                st.session_state.messages.append({"role": "assistant", "content": cntnt})
+
     
 
 def handle_tool_call(function_name, arguments):
@@ -350,12 +359,18 @@ def append_user_prompt(prompt: str = None):
 # Streamlit app layout
 ######################################################################
 
+# Create database, if needed and if we are in development
+if is_development:
+    DATABASE_URL = f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+    engine = create_engine(DATABASE_URL)
+    Base.metadata.create_all(bind=engine, checkfirst=True)
+
 # Read system prompt from file
 with open("src/prompts/planner_configurator.md", "r") as file:
     system_prompt = file.read()
 
 # Load default YAML configuration
-default_conf_path = os.path.join(os.getenv("OBS_PLANNER_ROOT"), "configs", "config_default.yaml")
+default_conf_path = os.path.join(obs_planner_root, "configs", "config_default.yaml")
 with open(default_conf_path, "r") as file:
     default_conf = yaml.safe_load(file)
 
@@ -368,22 +383,36 @@ with open("src/prompts/preset.json", "r") as file:
 st.set_page_config(layout="wide")
 st.title("Observatory Chatbot")
 
-if len(st.session_state.messages) == 0:
-    # Display starter buttons
-    starters = [
-        "🛰️ Is there any LEO satellite visible in the next 48 hours with a magnitude greater than 17?",
-        "📡 Can you schedule an observation of the INTELSAT satellites tomorrow tonight?"
-    ]
-    columns = st.columns(len(starters))
-    for col, starter in zip(columns, starters):
-        with col:
-            st.button(starter, on_click=append_user_prompt, args=(starter,))
-else:
-    display_messages()
-    messages = st.session_state.messages
-    if messages[-1]["role"] == "user":
-        handle_user_prompt(messages[-1]["content"])
+obs = obs_planner.txt2dict(passes_path= os.path.join(project_root, "mock_data", "2024_11_15__Passage_Galaxy.txt"), 
+                     telescope=default_conf["Telescope"],
+                     user_data=default_conf["UserData"])
 
-# Chat input for user messages
-st.chat_input("Type your message here...", key="user_prompt", 
-              on_submit=append_user_prompt)
+st.write(obs)
+
+
+# obs_planner.insert_obs_into_db(
+#     dict(ENDPOINT_reader=DB_HOST, PORT=DB_PORT, USER=DB_USER, PASSWORD=DB_PASSWORD, DATABASE=DB_NAME), 
+    
+#     )
+
+
+
+# if len(st.session_state.messages) == 0:
+#     # Display starter buttons
+#     starters = [
+#         "🛰️ Is there any LEO satellite visible in the next 48 hours with a magnitude greater than 17?",
+#         "📡 Can you schedule an observation of the INTELSAT satellites tomorrow tonight?"
+#     ]
+#     columns = st.columns(len(starters))
+#     for col, starter in zip(columns, starters):
+#         with col:
+#             st.button(starter, on_click=append_user_prompt, args=(starter,))
+# else:
+#     display_messages()
+#     messages = st.session_state.messages
+#     if messages[-1]["role"] == "user":
+#         handle_user_prompt(messages[-1]["content"])
+
+# # Chat input for user messages
+# st.chat_input("Type your message here...", key="user_prompt", 
+#               on_submit=append_user_prompt)
