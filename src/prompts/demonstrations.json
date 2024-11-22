@@ -1,0 +1,156 @@
+[
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Do I have any observation scheduled?\n"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_B32JvPjAe4bDxxs1BDljIkfM",
+          "type": "function",
+          "function": {
+            "name": "query_obs_db",
+            "arguments": "{\"psql\":\"SELECT * FROM observations;\"}"
+          }
+        }]
+    },
+    {
+        "role": "tool",
+        "tool_call_id": "call_B32JvPjAe4bDxxs1BDljIkfM",
+        "content": [
+          {
+            "type": "text",
+            "text": ""
+          }
+        ]
+    },           
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Is any of the Galaxy satellites visible in the next 24 hours?"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "call_W0P1zwrnpRXNnCMdkwW6JnRo",
+          "type": "function",
+          "function": {
+            "name": "run_observation_planner",
+            "arguments": "{\n  \"config_parameters\": [\n    \"TLEFile:LEO\",\n    \"TimeStart:Now\",\n    \"SearchTime:24;00\",\n    \"NameCriteria:GALAXY\"\n  ]\n}"
+          }
+        }
+      ],
+      "content": [
+        {
+          "type": "text",
+          "text": " To determine if any Galaxy satellites are visible in the next 24 hours, I will configure the settings for geostationary satellites.  The configuration will use \"TLEFile\" set to \"GEO\" or \"BULK\" for geostationary satellites. \"TimeStart\" is set to the present, and we are searching visibility within the next 24 hours.\n\nNow, I will run the observation planner with these specified parameters."
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_W0P1zwrnpRXNnCMdkwW6JnRo",
+      "content": [
+        {
+          "type": "text",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "What is the next time the satellite \"STARLINK-5971\" will be visible?"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "manualToolCall_fumew0",
+          "type": "function",
+          "function": {
+            "name": "run_observation_planner",
+            "arguments": "{\n  \"config_parameters\": [\n    \"TLEFile:GEO\",\n    \"TimeStart:Now\",\n    \"SearchTime:24;00\",\n    \"NameCriteria:\",\n    \"UseInclination:True\",\n    \"InclinationMin:0\",\n    \"InclinationMax:8\"\n  ]\n}"
+          }
+        }
+      ],
+      "content": [
+        {
+          "type": "text",
+          "text": "I will now initiate a search for the next period within which the satellite called \"STARLINK-5971\" will be visible. This would involve configuring the software to look for LEO or general bulk satellite data.  We set \"TLEFile\" to \"LEO\" or \"BULK\", beginning the search from the present time for a duration of up to 72 hours."
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "manualToolCall_fumew0",
+      "content": [
+        {
+          "type": "text",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "How many GEO satellites are visible tonight with a maximum inclination of 8 degrees?"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "tool_calls": [
+        {
+          "id": "manualToolCall_qht5oe",
+          "type": "function",
+          "function": {
+            "name": "run_observation_planner",
+            "arguments": "{\n  \"config_parameters\": [\n    \"TLEFile:GEO\",\n    \"TimeStart:Now\",\n    \"SearchTime:24;00\",\n    \"NameCriteria:\",\n    \"UseInclination:True\",\n    \"InclinationMin:0\",\n    \"InclinationMax:8\"\n  ]\n}"
+          }
+        }
+      ],
+      "content": [
+        {
+          "type": "text",
+          "text": "For identifying how many geostationary satellites will be passing overhead tonight with a maximum inclination of 8 degrees, we will configure these settings for the observation planning software accordingly.\n   We set the TLE file to GEO, setting \"TimeStart\" to now and \"SearchTime\" for the night (max 24 hours). We add a maximum inclination of 8 degrees.\n"
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "manualToolCall_qht5oe",
+      "content": [
+        {
+          "type": "text",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "This is the end of the conversation prelude, now the real user will begin the conversation with you"
+        }
+      ]
+    }
+]

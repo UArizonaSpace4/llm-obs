@@ -11,6 +11,7 @@ import pandas as pd
 from pathlib import Path
 import json
 from lm_hackers import askgpt, prepare_context_messages
+import random
 from sqlalchemy import create_engine # for development
 from db import Base # for development
 
@@ -28,7 +29,6 @@ is_mock = os.getenv("IS_MOCK", "False").lower() == "true"
 is_docker = os.getenv("IS_DOCKER", "False").lower() == "true"
 obs_planner_root = "/app/obs_planner" if is_docker else os.getenv("OBS_PLANNER_ROOT")
 tool_error = False
-
 
 # Import observation planner
 sys.path.append(obs_planner_root)
@@ -232,7 +232,7 @@ def run_observation_planner(*config_parameters):
 
             if not is_mock:
                 st.write_stream(utils.stream_function_output(obs_planner.main, config_dict=yaml_content,
-                                                            txt_to_json=False))
+                                                            txt_to_json=False, fill_with_defaults=False))
             lbl = "Observation planner completed"
             state = "complete"
         except Exception as e:
@@ -276,18 +276,40 @@ def run_observation_planner(*config_parameters):
                 fig = utils.plot_passages(passages, tle_dict)
                 display_and_save(fig)
 
-                # Call the LLM to explain the results
-                kwargs = preset.copy()
-                # No preset tools and context
-                del kwargs['messages']; del kwargs['tools'] ; del kwargs['parallel_tool_calls']
-                compl = askgpt(user = "The observation planner has finished. Answer the last user prompt",
-                       system = system_prompt, 
-                       context=prepare_context_messages(st.session_state.messages, n=None, exclude_tool=True),
-                       stream=True,
-                       **kwargs)
+                # Call the LLM to explain the results (No preset tools)
+                kwargs = preset.copy(); del kwargs['tools'] 
+                compl = askgpt(
+                    user = "The observation planner has finished. Answer the last user prompt",
+                    system = system_prompt, 
+                    context=prepare_context_messages(st.session_state.messages, n=None, exclude_tool=True),
+                    stream=True,
+                    **kwargs)
                 cntnt = st.write_stream(stream_response(compl))
                 st.session_state.messages.append({"role": "assistant", "content": cntnt})
 
+
+def query_obs_db(psql):
+    with st.status("Querying the database...", state="running") as status:
+        st.session_state.messages.append({"role": "tool"})
+        try:
+            res = obs_planner.database.push_to_db(
+                credentials = db_credentials, 
+                psql = psql)
+            lbl = "Query completed"
+            state = "complete"
+        except Exception as e:
+            logging.exception(e)
+            st.write(e)
+            lbl = "Error querying the database"
+            state = "error"
+            tool_error = True
+        return res
+    status.update(label=lbl, state=state)
+    st.session_state.messages[-1].update({"label": lbl, "state": state})
+
+    if not tool_error:
+        with st.chat_message("assistant"):
+            display_and_save(res, role="assistant")
     
 
 def handle_tool_call(function_name, arguments):
@@ -301,8 +323,9 @@ def handle_tool_call(function_name, arguments):
                 config_dict[name.strip()] = value.strip()
             run_observation_planner(**config_dict)
             
-        case "query_database":
-            # Run observation tasker
+        case "query_obs_db":
+            # Query the database
+            st.write("Querying the database...")
             pass
         case _:
             raise ValueError(f"Unknown function name: {function_name}")
@@ -320,23 +343,12 @@ def handle_user_prompt(prompt):
         Exception: If there is an error during the tool execution.
     """
     global tool_error
-    response = client.chat.completions.create(
-        model=preset["model"],
-        messages= preset["messages"] + [{"role": "user", "content": prompt}],
-        temperature=preset["temperature"],
-        max_tokens=preset["max_tokens"],
-        top_p=preset["top_p"],
-        frequency_penalty=preset["frequency_penalty"],
-        presence_penalty=preset["presence_penalty"],
-        stream=True,
-        tool_choice="auto",
-        response_format={"type": "text"},
-        parallel_tool_calls=False,
-        tools=preset["tools"]
-    )
+    kwargs = preset.copy()
+    compl = askgpt(user = prompt, system = system_prompt, context=demonstrations, 
+                   stream=True, tool_choice="auto", parallel_tool_calls=False, **kwargs)
     # Stream the response
     with st.chat_message("assistant"):       
-        assistant_response = st.write_stream(stream_response(response))
+        assistant_response = st.write_stream(stream_response(compl))
         st.session_state.messages.append({"role": "assistant", "content": assistant_response})
 
     if (st.session_state["last_stream"][-1].finish_reason == 'tool_calls'):
@@ -371,10 +383,6 @@ if is_development:
     engine = create_engine(DATABASE_URL)
     Base.metadata.create_all(bind=engine, checkfirst=True)
 
-# Read system prompt from file
-with open("src/prompts/planner_configurator.md", "r") as file:
-    system_prompt = file.read()
-
 # Load default YAML configuration
 default_conf_path = os.path.join(obs_planner_root, "configs", "config_default.yaml")
 with open(default_conf_path, "r") as file:
@@ -394,30 +402,32 @@ with open(default_conf_path, "r") as file:
     }
 
 # Load preset (default call configuration taken from the playground)
-preset = {}
+# https://platform.openai.com/playground/p/M4iHV1L0uG6MK5SwNMzfVi9E?mode=chat
 with open("src/prompts/preset.json", "r") as file:
     preset = json.load(file)
     preset.pop('system', None) # the system prompt is taken separately
+    preset.pop('messages', []) # the messages are taken separately
+
+# Read system prompt (instructions) from file
+with open("src/prompts/instructions.md", "r") as file:
+    system_prompt = file.read()
+
+# Read demonstrations (few shot prompts) and add them as messages
+with open("src/prompts/demonstrations.json", "r") as file:
+    demonstrations = json.load(file)
+
+# Load three random starters from the starters file
+with open("src/prompts/starters.md", "r") as file:
+    starters = file.readlines()
+    starters = [starter.strip() for starter in starters]
+    starters = random.sample(starters, 3)
+
 
 st.set_page_config(layout="wide")
-st.title("Observatory Chatbot")
-
-
-
-# obs = obs_planner.database.txt2dict(
-#                     passes_path= os.path.join(project_root, "mock_data", "2024_11_15__Passage_Galaxy.txt"), 
-#                     telescope=default_conf["General"]["Telescope"],
-#                     user_data=UserData)
-
-
-# obs_planner.database.insert_obs_into_db(credentials = db_credentials, obs = obs, table_name = "observations")
+st.title("Space4 Chatbot")
 
 if len(st.session_state.messages) == 0:
     # Display starter buttons
-    starters = [
-        "🛰️ Is there any LEO satellite visible in the next 48 hours with a magnitude greater than 17?",
-        "📡 Can you schedule an observation of the INTELSAT satellites tomorrow tonight?"
-    ]
     columns = st.columns(len(starters))
     for col, starter in zip(columns, starters):
         with col:

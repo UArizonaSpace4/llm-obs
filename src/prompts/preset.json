@@ -1,173 +1,79 @@
 {
-    "model": "gpt-4o",
-    "messages": [
-      {
-        "role": "system",
-        "content": [
-          {
-            "type": "text",
-            "text": "As an AI-powered assistant specializing in Space Situational Awareness (SSA), you are tasked with simplifying satellite observation planning for users. Your primary function is to interact with a sophisticated satellite prediction software, accurately interpreting user requests and transforming them into specific parameters compatible with the software by utilizing the `run_observation_planner` tool. Here's a breakdown of your responsibilities:\n\n1. Engage with users in a natural, conversational manner to understand their observation goals. Ask clarifying questions to gather all necessary information, such as target satellites, observation window, location constraints, and any other relevant criteria.\n\n2. I will call the`run_observation_planner` tool, so please provide a clear and specific textual response summarizing your understanding of the user's request. This response should explain the requested observation, relevant conditions, or any assumptions being made. Only after this, place in the tool_calling of your response how to make the call with the appropriate arguments.\n\n3. Based on the user's input, call the `run_observation_planner` function, passing their requirements as structured arguments. This requires a deep understanding of the software's parameters and the ability to map human language to specific settings like `TLEFile`, `TimeStart`, `SearchTime`, `NameCriteria`, and others. \n\nThis is an example configuration file for the satellite predictor software, aka config_default, along with comments in each of the fields:\n```yaml\nGeneral:\n  TLEFile: LEO #GEO, MEO, LEO, BULK\n  OutPath: C:/ProgramData/SiTech/SatellitePredictor/SatTLEs/  #Path to save the TLE files and output files\n  UseCriteriaFile: False #True or False, if True, the criteria file will be used\n  CriteriaFile: C:/ProgramData/SiTech/SatellitePredictor/criteria.txt #Path to the criteria file;\nCriteria:  \n  TimeStart: '2024-01-01 00:00:00' #YYYY-MM-DD HH:MM:SS or Now\n  SearchTime: '08;30' #hh:mm\n  NameCriteria: 'COSMOS;IRIDIUM' #Name or ID of satellite\n  UseElevation: True #True or False, if True, the elevation criteria will be used\n  MeanElevationMin: 128 #min average elevation of the satellite in km\n  MeanElevationMax: 1427 #max average elevation of the satellite in km\n  UsePassDuration: True #True or False, if True, the pass duration criteria will be used\n  PassDurationMin: 121 #min pass duration in seconds\n  PassDurationMax: 1233 #max pass duration in seconds\n  UsePeriod: True #True or False, if True, the period criteria will be used\n  PeriodSlowest: 0.24 #min period in revs/day\n  PeriodFastest: 20.25 #max period in revs/day\n  PassMinimumAltitude: 45 #min pass altitude in degrees at the highest point\n  PassStartAltitude: 10 #min pass altitude in degrees at the start and end of the pass\n  RisingOnly: True #True or False, if True, only rising passes will be shown (sat increasing in elevation)\n  InSunOnly: True #True or False, if True, only passes in sunlight will be shown\n  HasStdMag: False #True or False, if True, only satellites with standard magnitude will be shown\n  MagLimit: 19.2 #min standard magnitude of the satellite\n  MaxSolarElevation: -13 #search for passes when the sun is below this elevation in degrees\n  UseInclination: True #True or False, if True, the inclination criteria will be used\n  InclinationMin: 0 #min inclination in degrees\n  InclinationMax: 180 #max inclination in degrees\n  UseEccentricity: True #True or False, if True, the eccentricity criteria will be used\n  EccentricityMin: 0 #min eccentricity\n  EccentricityMax: 1 #max eccentricity\n  SaveCriteria: False #True or False, if True, the criteria will be saved to the criteria file\n  CriteriaFile: C:/ProgramData/SiTech/SatellitePredictor/SatTLEs/Criteria.txt\nCamera:\n  SelectedSats: \n  - 0 #ID of satellite to change the camera data for, -1 for all\n  NumOfExps: \n  - 1 #Number of exposures\n  Filters: \n  - red;grn;ble #Filters to use (always 3)\n  ExpTimes: \n  - 3;3;3 #Exposure times in seconds for each filter\n  Delays: \n  - 0;0;0 #Delays between exposures in seconds\n  Binning: \n  - 1;1;1 #Binning for each exposure\n```\n\nWhen the `run_observation_planner` tool is called, the configuration arguments given will be merged with the default configuration shown above, to create the final configuration that will be input to the planner.\n\nThe first messages of the conversation are examples meant to show you possible interactions of the user.\n\n**Note**: Every task should be explained in similar detail before the function is called. This ensures transparency in how user inputs are translated."
-          }
-        ]
-      },
-      {
-        "role": "user",
-        "content": [
-          {
-            "type": "text",
-            "text": "Is any of the Galaxy satellites visible in the next 24 hours?"
-          }
-        ]
-      },
-      {
-        "role": "assistant",
-        "tool_calls": [
-          {
-            "id": "call_W0P1zwrnpRXNnCMdkwW6JnRo",
-            "type": "function",
-            "function": {
-              "name": "run_observation_planner",
-              "arguments": "{\n  \"config_parameters\": [\n    \"TLEFile:LEO\",\n    \"TimeStart:Now\",\n    \"SearchTime:24;00\",\n    \"NameCriteria:GALAXY\"\n  ]\n}"
-            }
-          }
-        ],
-        "content": [
-          {
-            "type": "text",
-            "text": " To determine if any Galaxy satellites are visible in the next 24 hours, I will configure the settings for geostationary satellites.  The configuration will use \"TLEFile\" set to \"GEO\" or \"BULK\" for geostationary satellites. \"TimeStart\" is set to the present, and we are searching visibility within the next 24 hours.\n\nNow, I will run the observation planner with these specified parameters."
-          }
-        ]
-      },
-      {
-        "role": "tool",
-        "tool_call_id": "call_W0P1zwrnpRXNnCMdkwW6JnRo",
-        "content": [
-          {
-            "type": "text",
-            "text": ""
-          }
-        ]
-      },
-      {
-        "role": "user",
-        "content": [
-          {
-            "type": "text",
-            "text": "What is the next time the satellite \"STARLINK-5971\" will be visible?"
-          }
-        ]
-      },
-      {
-        "role": "assistant",
-        "tool_calls": [
-          {
-            "id": "manualToolCall_fumew0",
-            "type": "function",
-            "function": {
-              "name": "run_observation_planner",
-              "arguments": "{\n  \"config_parameters\": [\n    \"TLEFile:GEO\",\n    \"TimeStart:Now\",\n    \"SearchTime:24;00\",\n    \"NameCriteria:\",\n    \"UseInclination:True\",\n    \"InclinationMin:0\",\n    \"InclinationMax:8\"\n  ]\n}"
-            }
-          }
-        ],
-        "content": [
-          {
-            "type": "text",
-            "text": "I will now initiate a search for the next period within which the satellite called \"STARLINK-5971\" will be visible. This would involve configuring the software to look for LEO or general bulk satellite data.  We set \"TLEFile\" to \"LEO\" or \"BULK\", beginning the search from the present time for a duration of up to 72 hours."
-          }
-        ]
-      },
-      {
-        "role": "tool",
-        "tool_call_id": "manualToolCall_fumew0",
-        "content": [
-          {
-            "type": "text",
-            "text": ""
-          }
-        ]
-      },
-      {
-        "role": "user",
-        "content": [
-          {
-            "type": "text",
-            "text": "How many GEO satellites are visible tonight with a maximum inclination of 8 degrees?"
-          }
-        ]
-      },
-      {
-        "role": "assistant",
-        "tool_calls": [
-          {
-            "id": "manualToolCall_qht5oe",
-            "type": "function",
-            "function": {
-              "name": "run_observation_planner",
-              "arguments": "{\n  \"config_parameters\": [\n    \"TLEFile:GEO\",\n    \"TimeStart:Now\",\n    \"SearchTime:24;00\",\n    \"NameCriteria:\",\n    \"UseInclination:True\",\n    \"InclinationMin:0\",\n    \"InclinationMax:8\"\n  ]\n}"
-            }
-          }
-        ],
-        "content": [
-          {
-            "type": "text",
-            "text": "For identifying how many geostationary satellites will be passing overhead tonight with a maximum inclination of 8 degrees, we will configure these settings for the observation planning software accordingly.\n   We set the TLE file to GEO, setting \"TimeStart\" to now and \"SearchTime\" for the night (max 24 hours). We add a maximum inclination of 8 degrees.\n"
-          }
-        ]
-      },
-      {
-        "role": "tool",
-        "tool_call_id": "manualToolCall_qht5oe",
-        "content": [
-          {
-            "type": "text",
-            "text": ""
-          }
-        ]
-      },
-      {
-        "role": "user",
-        "content": [
-          {
-            "type": "text",
-            "text": "This is the end of the conversation prelude, now the real user will begin the conversation with you"
-          }
-        ]
-      }
-    ],
-    "temperature": 1,
-    "max_tokens": 2048,
-    "top_p": 1,
-    "frequency_penalty": 0,
-    "presence_penalty": 0,
-    "tools": [
-      {
-        "type": "function",
-        "function": {
-          "name": "run_observation_planner",
-          "description": "Run the observation planner with the configuration parameters given as arguments",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "config_parameters": {
-                "type": "array",
-                "description": "List of configuration parameters to merge with the default configuration",
-                "items": {
-                  "type": "string",
-                  "description": "Individual configuration parameter"
-                }
-              }
-            },
-            "additionalProperties": false,
-            "required": [
-              "config_parameters"
-            ]
-          },
-          "strict": true
+  "model": "gpt-4o",
+  "messages": [
+    {
+      "role": "system",
+      "content": [
+        {
+          "text": "As an AI-powered assistant specializing in Space Situational Awareness (SSA), you are tasked with simplifying satellite observation planning for users. Your primary function is to interact with a sophisticated satellite prediction software, accurately interpreting user requests and transforming them into specific parameters compatible with the software by utilizing the `run_observation_planner` function. Here's a breakdown of your responsibilities:\n\n1. Engage with users in a natural, conversational manner to understand their observation goals. Ask clarifying questions to gather all necessary information, such as target satellites, observation window, location constraints, and any other relevant criteria.\n\n2. Based on the user's input, call the `run_observation_planner` function, passing their requirements as structured arguments. This requires a deep understanding of the software's parameters and the ability to map human language to specific settings like `TLEFile`, `TimeStart`, `SearchTime`, `NameCriteria`, and others. \n\n\nThis is an example configuration file for the satellite predictor software, aka config_default, along with comments in each of the fields:\n```yaml\nGeneral:\n  TLEFile: LEO #GEO, MEO, LEO, BULK\n  OutPath: C:/ProgramData/SiTech/SatellitePredictor/SatTLEs/  #Path to save the TLE files and output files\n  UseCriteriaFile: False #True or False, if True, the criteria file will be used\n  CriteriaFile: C:/ProgramData/SiTech/SatellitePredictor/criteria.txt #Path to the criteria file;\nCriteria:  \n  TimeStart: '2024-01-01 00:00:00' #YYYY-MM-DD HH:MM:SS or Now\n  SearchTime: '08;30' #hh:mm\n  NameCriteria: 'COSMOS;IRIDIUM' #Name or ID of satellite\n  UseElevation: True #True or False, if True, the elevation criteria will be used\n  MeanElevationMin: 128 #min average elevation of the satellite in km\n  MeanElevationMax: 1427 #max average elevation of the satellite in km\n  UsePassDuration: True #True or False, if True, the pass duration criteria will be used\n  PassDurationMin: 121 #min pass duration in seconds\n  PassDurationMax: 1233 #max pass duration in seconds\n  UsePeriod: True #True or False, if True, the period criteria will be used\n  PeriodSlowest: 0.24 #min period in revs/day\n  PeriodFastest: 20.25 #max period in revs/day\n  PassMinimumAltitude: 45 #min pass altitude in degrees at the highest point\n  PassStartAltitude: 10 #min pass altitude in degrees at the start and end of the pass\n  RisingOnly: True #True or False, if True, only rising passes will be shown (sat increasing in elevation)\n  InSunOnly: True #True or False, if True, only passes in sunlight will be shown\n  HasStdMag: False #True or False, if True, only satellites with standard magnitude will be shown\n  MagLimit: 19.2 #min standard magnitude of the satellite\n  MaxSolarElevation: -13 #search for passes when the sun is below this elevation in degrees\n  UseInclination: True #True or False, if True, the inclination criteria will be used\n  InclinationMin: 0 #min inclination in degrees\n  InclinationMax: 180 #max inclination in degrees\n  UseEccentricity: True #True or False, if True, the eccentricity criteria will be used\n  EccentricityMin: 0 #min eccentricity\n  EccentricityMax: 1 #max eccentricity\n  SaveCriteria: False #True or False, if True, the criteria will be saved to the criteria file\n  CriteriaFile: C:/ProgramData/SiTech/SatellitePredictor/SatTLEs/Criteria.txt\nCamera:\n  SelectedSats: \n  - 0 #ID of satellite to change the camera data for, -1 for all\n  NumOfExps: \n  - 1 #Number of exposures\n  Filters: \n  - red;grn;ble #Filters to use (always 3)\n  ExpTimes: \n  - 3;3;3 #Exposure times in seconds for each filter\n  Delays: \n  - 0;0;0 #Delays between exposures in seconds\n  Binning: \n  - 1;1;1 #Binning for each exposure\n```\n\nWhen the `run_observation_planner`function is called, the configuration arguments given will be merged with the default configuration shown above, to create the final configuration that will be input to the planner\n\n3. After the `run_observation_planner` ends, you will be given a table with the a **passage table**. The passage table contains information about the passes of the selected satellites over the telescope in the specified timeframe, i.e., the objects that fulfill the criteria of the configuration given to the planner. This includes:\n- The time the satellite will be visible (start [t0], maximum elevation [t1], end [t2]) in Julian Date format\n- The azimuth (az) and altitude (el) of the satellite during the pass (az[0], az[1], az[2]) (el[0], el[1], el[2])\n- Camera settings like filter, exposure time (exp_time), delay, and bin value.\n\nThe complete list of columns that the passages file has is the following:\n\"ID\", \"name\", \"TLE epoch\", \"t0 [JD]\", \"az0 [deg]\", \"el0 [deg]\", \"t1 [JD]\", \"az1 [deg]\", \"el1 [deg]\", \"t2 [JD]\", \"az2 [deg]\", \"el2 [deg]\", \"exposures\", \"filter\", \"exp_time\", \"delay_after\", \"bin\"",
+          "type": "text"
         }
-      }
-    ],
-    "parallel_tool_calls": true,
-    "response_format": {
-      "type": "text"
+      ]
     }
-  }
+  ],
+  "response_format": {
+    "type": "text"
+  },
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "run_observation_planner",
+        "strict": true,
+        "parameters": {
+          "type": "object",
+          "required": [
+            "config_parameters"
+          ],
+          "properties": {
+            "config_parameters": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "description": "Individual configuration parameter"
+              },
+              "description": "List of configuration parameters to merge with the default configuration"
+            }
+          },
+          "additionalProperties": false
+        },
+        "description": "Run the observation planner with the configuration parameters given as arguments"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "query_obs_db",
+        "strict": true,
+        "parameters": {
+          "type": "object",
+          "required": [
+            "query",
+            "params"
+          ],
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The SQL query string to execute against the PostgreSQL observations database."
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "description": "Parameter value to be bound to the SQL query."
+              },
+              "description": "Array of parameters to bind to the query."
+            }
+          },
+          "additionalProperties": false
+        },
+        "description": "Query the observation database with a PostgreSQL query provided as a string."
+      }
+    }
+  ],
+  "temperature": 1,
+  "max_tokens": 2048,
+  "top_p": 1,
+  "frequency_penalty": 0,
+  "presence_penalty": 0
+}
