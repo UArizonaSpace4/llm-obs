@@ -7,7 +7,6 @@ services:
       - "8501:8501"
     volumes:
       - ./src:/app/src
-      #- ${OBS_PLANNER_ROOT}:/app/obs_planner
       - ./mock_data:/app/mock_data
     env_file:
       - .env
@@ -15,8 +14,11 @@ services:
       - IS_DOCKER=True
       - DB_HOST=db
       - DB_PORT=5432
+      - OBS_PLANNER_IP=satellite_predictor # network created by compose
+      - OBS_PLANNER_PORT=1929
     depends_on:
       - db
+      - satellite_predictor
 
   db:
     image: postgres:13
@@ -26,6 +28,23 @@ services:
       - POSTGRES_DB=${DB_NAME}
     volumes:
       - POSTGRES_data:/var/lib/postgresql/data
+
+  satellite_predictor:
+    build:
+      context: ./obs_planner/dockerfiles
+      dockerfile: Dockerfile
+    environment:
+      - LOCAL_UID=${UID}
+      - LOCAL_GID=${GID}
+    ports:
+      - "${OBS_PLANNER_PORT}:1929"
+    volumes:
+      - type: bind
+        source: ./mock_data/SatTLEs/
+        target: /home/wineuser/.wine/drive_c/ProgramData/SiTech/SatellitePredictor/SatTLEs/ # output
+        read_only: false
+        bind:
+          create_host_path: false # user must create it manually to avoid permission issues
 
 volumes:
   POSTGRES_data:
