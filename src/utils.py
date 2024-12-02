@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 from astropy.time import Time 
 import numpy as np
 import pandas as pd
+import datetime
 
 
 def extract_valid_yaml(text):
@@ -254,7 +255,7 @@ def plot_passages(passages_df, tle_dict):
     # Update layout
     fig.update_layout(
         title=dict(
-            text="Geostationary Satellite Positions",
+            text="Satellite Positions",
             y=0.95,
             x=0.5,
             xanchor='center',
@@ -327,3 +328,33 @@ def serialize_content(content, content_type):
         return content.to_markdown()
     else:
         return str(content)
+    
+
+def format_date_for_filename(time_start: str) -> str:
+    """
+    Convert input time string to formatted date string for filename.
+    
+    Args:
+        time_start: String containing date in format 'YYYY-MM-DD' or 'Now'
+    
+    Returns:
+        String containing date formatted with underscores (YYYY_MM_DD)
+    
+    Raises:
+        SystemExit: If date format is incorrect
+    """
+    obs_day = time_start.split(' ')[0]
+    if obs_day == 'Now':
+        obs_day = datetime.datetime.now().strftime('%Y-%m-%d')
+    try:
+        datetime.datetime.strptime(obs_day, '%Y-%m-%d')
+    except ValueError:
+        print("Incorrect data format, should be YYYY-MM-DD")
+        sys.exit()
+        
+    date_local = obs_day + ' 17:30:00'
+    date_utc = datetime.datetime.strptime(date_local, '%Y-%m-%d %H:%M:%S') + datetime.timedelta(hours=7)
+    day_utc = date_utc.strftime('%Y-%m-%d')
+    date_utc_with_underscore = day_utc.replace('-', '_')
+    
+    return date_utc_with_underscore

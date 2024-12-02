@@ -8,6 +8,8 @@ services:
     volumes:
       - ./src:/app/src
       - ./mock_data:/app/mock_data
+      - ${SAT_PREDICTOR_OUTPUT_DIR}:/app/satpred_output
+
     env_file:
       - .env
     environment:
@@ -16,6 +18,7 @@ services:
       - DB_PORT=5432
       - OBS_PLANNER_IP=satellite_predictor # network created by compose
       - OBS_PLANNER_PORT=1929
+      - SAT_PREDICTOR_OUTPUT_DIR=/app/satpred_output # otherwise main.py variable "LocalOutPath" would break
     depends_on:
       - db
       - satellite_predictor
@@ -40,7 +43,7 @@ services:
       - "${OBS_PLANNER_PORT}:1929"
     volumes:
       - type: bind
-        source: ./mock_data/SatTLEs/
+        source: "${SAT_PREDICTOR_OUTPUT_DIR}"
         target: /home/wineuser/.wine/drive_c/ProgramData/SiTech/SatellitePredictor/SatTLEs/ # output
         read_only: false
         bind:

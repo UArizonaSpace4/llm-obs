@@ -3,6 +3,7 @@ rag/
 obs_planner/
 obs_tasker/
 mock_data/
+satpred_output/
 LLM.txt
 
 # Byte-compiled / optimized / DLL files

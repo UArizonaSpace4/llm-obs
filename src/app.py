@@ -28,6 +28,7 @@ project_root = Path(__file__).parent.parent.absolute()
 is_mock = os.getenv("IS_MOCK", "False").lower() == "true"
 is_docker = os.getenv("IS_DOCKER", "False").lower() == "true"
 obs_planner_root = "/app/obs_planner" if is_docker else os.getenv("OBS_PLANNER_ROOT")
+satpred_output_dir = os.getenv("SAT_PREDICTOR_OUTPUT_DIR")
 tool_error = False
 
 # Import observation planner
@@ -220,18 +221,15 @@ def run_observation_planner(*config_parameters):
     # Show a status container while the model is thinking
     with st.status("Running observation planner...", state="running") as status:
         st.session_state.messages.append({"role": "tool"})
-        yaml_content = default_conf
-        yaml_content.update(config_parameters)
+        planner_conf = default_conf
+        planner_conf.update(config_parameters)
     
         try:
-            display_and_save("Your Configuration")
-            display_and_save(yaml.dump(config_parameters, sort_keys=False, default_flow_style=False), type="code")
-
-            display_and_save("Merged Configuration")
-            display_and_save(yaml.dump(yaml_content, sort_keys=False, default_flow_style=False), type="code")
+            display_and_save("Configuration")
+            display_and_save(yaml.dump(planner_conf, sort_keys=False, default_flow_style=False), type="code")
 
             if not is_mock:
-                st.write_stream(utils.stream_function_output(obs_planner.main, config_dict=yaml_content,
+                st.write_stream(utils.stream_function_output(obs_planner.main, config_dict=planner_conf,
                                                             txt_to_json=False, fill_with_defaults=False))
             lbl = "Observation planner completed"
             state = "complete"
@@ -250,8 +248,9 @@ def run_observation_planner(*config_parameters):
             passages_file = os.path.join(project_root, "mock_data", "2024_11_15__Passage_Galaxy.txt")
             tle_file = os.path.join(project_root, "mock_data", "2024_11_15__TLE_Galaxy.txt")
         else:
-            passages_file = os.path.join(project_root, "mock_data", "2024_11_15__Passage_Galaxy.txt")
-            tle_file = os.path.join(project_root, "mock_data", "2024_11_15__TLE_Galaxy.txt")
+            date_utc_with_underscore = utils.format_date_for_filename(planner_conf['Criteria']['TimeStart'])
+            passages_file = os.path.join(satpred_output_dir, date_utc_with_underscore + "__Passage_" + UserData['username'] + '.txt')
+            tle_file = os.path.join(satpred_output_dir, date_utc_with_underscore + "__TLE_" + UserData['username'] + '.txt')
 
         with st.chat_message("assistant"):
             if passages_file and tle_file:
@@ -325,8 +324,10 @@ def handle_tool_call(function_name, arguments):
             
         case "query_obs_db":
             # Query the database
-            st.write("Querying the database...")
-            pass
+            if "query" not in arguments:
+                st.write("Error calling the database. Query not found")
+            else:
+                query_obs_db(psql=arguments["query"])
         case _:
             raise ValueError(f"Unknown function name: {function_name}")
 
@@ -388,10 +389,13 @@ default_conf_path = os.path.join(obs_planner_root, "configs", "config_default.ya
 with open(default_conf_path, "r") as file:
     default_conf = yaml.safe_load(file)
 
-    UserData = {"organization" : default_conf['User']['Organization'], \
-            "username": default_conf['User']['Username'], \
+    UserData = {
+            "organization" : default_conf['User']['UserUniqueId'], \
+            "username": "llm", \
             "user_unique_id": default_conf['User']['UserUniqueId'], \
-            "user_project": default_conf['User']['UserProject']}
+            "user_project": default_conf['User']['UserProject']
+        }
+    default_conf['User']['Username'] = "llm"
 
     db_credentials = {
         "ENDPOINT_reader": DB_HOST,
