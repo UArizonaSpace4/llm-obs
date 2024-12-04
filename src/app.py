@@ -3,6 +3,7 @@ import os
 import openai
 import streamlit as st
 import time
+import planner
 import utils
 import yaml
 from pathlib import Path
@@ -10,10 +11,12 @@ import logging
 import pandas as pd
 from pathlib import Path
 import json
-from lm_hackers import askgpt, prepare_context_messages
+from lm_hackers import askgpt, handle_stream_response_tool_calls, prepare_context_messages
 import random
 from sqlalchemy import create_engine # for development
-from db import Base # for development
+from db import Base
+from utils import display_and_save
+from utils import display_messages # for development
 
 # General config
 is_development = os.getenv("IS_DEVELOPMENT", "True").lower() == "true"
@@ -48,74 +51,6 @@ client = openai.OpenAI()
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-def update_selection():
-    selected_indices = st.session_state.de["Select"]
-    st.session_state.selected_passages = st.session_state.df[selected_indices]
-
-
-def display_message(msg, type: str = "text"):
-    """Display a message in Streamlit with different formatting options.
-    
-    Args:
-        msg: The message to display
-        type: Format type - 'text', 'code', or 'md'
-    """
-    if type == "text" or type is None:
-        st.write(msg)
-    elif type == "code":
-        st.code(msg)
-    elif type == "md":
-        st.markdown(msg)
-    else:
-        st.text(msg)  # Default to text for unknown types
-
-
-# Function to display chat messages
-def display_messages():
-    for message in st.session_state.messages:
-        if message["role"] == "tool":
-            with st.status(label=message["label"], state=message["state"]):
-                if "content" in message:
-                    if isinstance(message["content"], list):
-                        for content in message["content"]:
-                            display_message(content)
-                    else:
-                        display_message(message["content"])
-        else:
-            with st.chat_message(message["role"]):
-                if isinstance(message["content"], list):
-                    for content in message["content"]:
-                        display_message(content)
-                else:
-                    display_message(message["content"])
-
-
-def display_and_save(msg, type="text", role=None, append_to_last=True):
-    """
-        Write a message to the chat and save it to the session state.
-
-        Args:
-            msg: The message to write
-            type: The type of message - 'text', 'code', 'md', or None (unspecified)
-            role: The role of the speaker (user, assistant, status). If not provided, 
-                    it will update the content of the last message appended
-            append_to_last: If True and role is None, it will append the message to the last
-                    message, as an array of strings (same with the type). If False, 
-                    it will replace the content.
-    """
-    display_message(msg, type)
-    if role:
-        st.session_state.messages.append({"role": role, "type": [type], "content": [msg]})
-    else:
-        if append_to_last and "content" in st.session_state.messages[-1]:
-            st.session_state.messages[-1]["content"].append(msg)
-        else:
-            st.session_state.messages[-1]["content"] = [msg]
-        if append_to_last and "type" in st.session_state.messages[-1]:
-            st.session_state.messages[-1]["type"].append(type)
-        else:
-            st.session_state.messages[-1]["type"] = [type]
-
 
 def stream_response(compl, yield_in="content", sleep=0.01):
     """
@@ -145,69 +80,7 @@ def stream_response(compl, yield_in="content", sleep=0.01):
         if sleep: time.sleep(0.01)  # Simulate delay for streaming effect
 
 
-def handle_stream_response_tool_calls():
-    """
-    Processes chunks of a streaming response to extract tool call information.
-    Returns:
-        dict: A dictionary where each key is a tool call index and each value is a dictionary containing
-              the tool call's id and function details (name and arguments).
-    The function processes the last stream stored in session state, extracts tool call information, 
-    and aggregates it into a dictionary.
-    """
-    tool_calls = {}
-    
-    for chunk in st.session_state["last_stream"]:
-        delta = chunk.delta
-        if delta.tool_calls:
-            for tool_call in delta.tool_calls:
-                if tool_call.index not in tool_calls:
-                    tool_calls[tool_call.index] = {
-                        "id": tool_call.id,
-                        "function": {
-                            "name": "",
-                            "arguments": ""
-                        }
-                    }
-                
-                if tool_call.function.name:
-                    tool_calls[tool_call.index]["function"]["name"] += tool_call.function.name
-                if tool_call.function.arguments:
-                    tool_calls[tool_call.index]["function"]["arguments"] += tool_call.function.arguments
-    
-    return tool_calls
-
-
-def process_tool_call(tool_call):
-    """
-    Process an OpenAI tool call object and extract relevant information.
-    This function takes a tool call object and extracts its index, function name, and arguments.
-    If the tool call is invalid or missing required attributes, returns None.
-    Args:
-        tool_call: An OpenAI tool call object containing function call information
-    Returns:
-        dict: A dictionary containing:
-            - index (int): The index of the tool call
-            - function_name (str): The name of the function being called
-            - arguments (str): The arguments passed to the function
-        None: If the tool call is invalid or missing required attributes
-    Raises:
-        AttributeError: If the tool call object is malformed or missing required attributes
-    """
-    try:
-        if not tool_call or 'function' not in tool_call:
-            return None
-            
-        return {
-            "id": tool_call["id"],
-            "function_name": tool_call["function"]["name"],
-            "arguments": tool_call["function"]["arguments"]
-        }
-    except AttributeError as e:
-        print(f"Error processing tool call: {e}")
-        return None
-    
-
-def run_observation_planner(*config_parameters):
+def run_observation_planner(*config_parameters, st_status):
     """
     Run the observation planner tool with the provided arguments.
     This function takes a list of arguments, passes them to the observation planner tool,
@@ -217,74 +90,28 @@ def run_observation_planner(*config_parameters):
     Returns:
         Any: The output of the observation planner tool
     """
-    global tool_error
+    tool_error = False
     # Show a status container while the model is thinking
-    with st.status("Running observation planner...", state="running") as status:
-        st.session_state.messages.append({"role": "tool"})
-        planner_conf = default_conf
-        planner_conf.update(config_parameters)
-    
-        try:
-            display_and_save("Configuration")
-            display_and_save(yaml.dump(planner_conf, sort_keys=False, default_flow_style=False), type="code")
+    planner_conf = default_conf
+    planner_conf.update(config_parameters)
 
-            if not is_mock:
-                st.write_stream(utils.stream_function_output(obs_planner.main, config_dict=planner_conf,
-                                                            txt_to_json=False, fill_with_defaults=False))
-            lbl = "Observation planner completed"
-            state = "complete"
-        except Exception as e:
-            logging.exception(e)
-            st.write(e)
-            lbl = "Error running observation planner"
-            state = "error"
-            tool_error = True
-        status.update(label=lbl, state=state)
-        st.session_state.messages[-1].update({"label": lbl, "state": state})
-    
-    # Showing passages
-    if not tool_error:
-        if is_mock:
-            passages_file = os.path.join(project_root, "mock_data", "2024_11_15__Passage_Galaxy.txt")
-            tle_file = os.path.join(project_root, "mock_data", "2024_11_15__TLE_Galaxy.txt")
-        else:
-            date_utc_with_underscore = utils.format_date_for_filename(planner_conf['Criteria']['TimeStart'])
-            passages_file = os.path.join(satpred_output_dir, date_utc_with_underscore + "__Passage_" + UserData['username'] + '.txt')
-            tle_file = os.path.join(satpred_output_dir, date_utc_with_underscore + "__TLE_" + UserData['username'] + '.txt')
+    try:
+        display_and_save("Configuration")
+        display_and_save(yaml.dump(planner_conf, sort_keys=False, default_flow_style=False), type="code")
 
-        with st.chat_message("assistant"):
-            if passages_file and tle_file:
-                passages = pd.read_csv(passages_file, comment='#', 
-                                    sep='\s+', engine='python', header=None)
-                headers = [
-                    "ID", "name", "TLE epoch", "t0 [JD]", "az0 [deg]", "el0 [deg]", 
-                    "t1 [JD]", "az1 [deg]", "el1 [deg]", "t2 [JD]", "az2 [deg]", "el2 [deg]", 
-                    "exposures", "filter", "exp_time", "delay_after", "bin"
-                ]
-                passages.columns = headers
-                passages['ID'] = passages['ID'].astype(str).str.zfill(5)
-                tle_dict = utils.read_tle_file(tle_file)
-
-                # Create a dataframe for display with fewer columns
-                display_df = passages[['ID', 'name', 't0 [JD]', 't1 [JD]', 't2 [JD]', \
-                                       'az0 [deg]', 'az1 [deg]', 'az2 [deg]', 'el0 [deg]', 
-                                       'el1 [deg]', 'el2 [deg]']]
-
-                display_and_save(display_df, role="assistant")
-
-                fig = utils.plot_passages(passages, tle_dict)
-                display_and_save(fig)
-
-                # Call the LLM to explain the results (No preset tools)
-                kwargs = preset.copy(); del kwargs['tools'] 
-                compl = askgpt(
-                    user = "The observation planner has finished. Answer the last user prompt",
-                    system = system_prompt, 
-                    context=prepare_context_messages(st.session_state.messages, n=None, exclude_tool=True),
-                    stream=True,
-                    **kwargs)
-                cntnt = st.write_stream(stream_response(compl))
-                st.session_state.messages.append({"role": "assistant", "content": cntnt})
+        if not is_mock:
+            st.write_stream(utils.stream_function_output(obs_planner.main, config_dict=planner_conf, txt_to_json=False, fill_with_defaults=False))
+        lbl = "Observation planner completed"
+        state = "complete"
+    except Exception as e:
+        logging.exception(e)
+        st.write(e)
+        lbl = "Error running observation planner"
+        state = "error"
+        tool_error = True
+    st_status.update(label=lbl, state=state)
+    st.session_state.messages[-1].update({"label": lbl, "state": state})
+    return tool_error, planner_conf
 
 
 def query_obs_db(psql):
@@ -311,16 +138,62 @@ def query_obs_db(psql):
             display_and_save(res, role="assistant")
     
 
-def handle_tool_call(function_name, arguments):
+def handle_tool_call(function_name, arguments, tool_call_id):
     args_dict = json.loads(arguments)
+    st.session_state.messages.append({"role": "tool", "tool_call_id": tool_call_id})
     match function_name.lower():
         case "run_observation_planner":
-            config_args = args_dict.get("config_args", [])
-            config_dict = {}
-            for param in config_args:
-                name, value = param.split(":", 1)
-                config_dict[name.strip()] = value.strip()
-            run_observation_planner(**config_dict)
+            with st.status("Running observation planner...", state="running") as status:
+                config_args = args_dict.get("config_args", [])
+                config_dict = {}
+                for param in config_args:
+                    name, value = param.split(":", 1)
+                    config_dict[name.strip()] = value.strip()
+                tool_error, planner_conf = run_observation_planner(**config_dict, st_status=status)
+
+            # Showing passages
+            if not tool_error:
+                if is_mock:
+                    passages_file = os.path.join(project_root, "mock_data", "2024_11_15__Passage_Galaxy.txt")
+                    tle_file = os.path.join(project_root, "mock_data", "2024_11_15__TLE_Galaxy.txt")
+                else:
+                    date_utc_with_underscore = utils.format_date_for_filename(planner_conf['Criteria']['TimeStart'])
+                    passages_file = os.path.join(satpred_output_dir, date_utc_with_underscore + "__Passage_" + UserData['username'] + '.txt')
+                    tle_file = os.path.join(satpred_output_dir, date_utc_with_underscore + "__TLE_" + UserData['username'] + '.txt')
+
+                with st.chat_message("assistant"):
+                    if passages_file and tle_file:
+                        passages = pd.read_csv(passages_file, comment='#', 
+                                            sep='\s+', engine='python', header=None)
+                        headers = [
+                            "ID", "name", "TLE epoch", "t0 [JD]", "az0 [deg]", "el0 [deg]", 
+                            "t1 [JD]", "az1 [deg]", "el1 [deg]", "t2 [JD]", "az2 [deg]", "el2 [deg]", 
+                            "exposures", "filter", "exp_time", "delay_after", "bin"
+                        ]
+                        passages.columns = headers
+                        passages['ID'] = passages['ID'].astype(str).str.zfill(5)
+                        tle_dict = planner.read_tle_file(tle_file)
+
+                        # Create a dataframe for display with fewer columns
+                        display_df = passages[['ID', 'name', 't0 [JD]', 't1 [JD]', 't2 [JD]', \
+                                            'az0 [deg]', 'az1 [deg]', 'az2 [deg]', 'el0 [deg]', 
+                                            'el1 [deg]', 'el2 [deg]']]
+
+                        display_and_save(display_df, role="assistant")
+
+                        fig = planner.plot_passages(passages, tle_dict)
+                        display_and_save(fig)
+
+                        # Call the LLM to explain the results (No preset tools)
+                        kwargs = preset.copy(); del kwargs['tools'] 
+                        compl = askgpt(
+                            user = "The observation planner has finished. Answer the last user prompt",
+                            system = system_prompt, 
+                            context=prepare_context_messages(st.session_state.messages, n=None, exclude_tool=True),
+                            stream=True,
+                            **kwargs)
+                        cntnt = st.write_stream(stream_response(compl))
+                        st.session_state.messages.append({"role": "assistant", "content": cntnt})
             
         case "query_obs_db":
             # Query the database
@@ -343,10 +216,12 @@ def handle_user_prompt(prompt):
     Raises:
         Exception: If there is an error during the tool execution.
     """
-    global tool_error
     kwargs = preset.copy()
-    compl = askgpt(user = prompt, system = system_prompt, context=demonstrations, 
-                   stream=True, tool_choice="auto", parallel_tool_calls=False, **kwargs)
+    context = prepare_context_messages(msgs=demonstrations + st.session_state.messages, 
+                                       n=CONTEXT_WINDOW, 
+                                       exclude_tool=False)
+    compl = askgpt(user = prompt, system = system_prompt, context=context, 
+                   stream=True, tool_choice="auto", parallel_tool_calls=False, store=True, **kwargs)
     # Stream the response
     with st.chat_message("assistant"):       
         assistant_response = st.write_stream(stream_response(compl))
@@ -354,16 +229,18 @@ def handle_user_prompt(prompt):
 
     if (st.session_state["last_stream"][-1].finish_reason == 'tool_calls'):
         tool_calls = handle_stream_response_tool_calls()
+        st.session_state.messages[-1].update({"tool_calls": tool_calls})
         try:
-            tool_call = process_tool_call(tool_calls[0])
+            tool_call = tool_calls[0] # only first one
             if tool_call:
-                handle_tool_call(tool_call["function_name"], tool_call["arguments"])
+                handle_tool_call(tool_call["function"]["name"], 
+                                 tool_call["function"]["arguments"],
+                                 tool_call["id"])
             else:
                 display_and_save("Error processing tool call", role="assistant")        
         except Exception as e:
             logging.exception(e)
             st.write(e)
-            tool_error = True
     else:
         logging.info("No tool found to call")
 
@@ -419,6 +296,7 @@ with open("src/prompts/instructions.md", "r") as file:
 # Read demonstrations (few shot prompts) and add them as messages
 with open("src/prompts/demonstrations.json", "r") as file:
     demonstrations = json.load(file)
+    CONTEXT_WINDOW = max(len(demonstrations), 3)
 
 # Load three random starters from the starters file
 with open("src/prompts/starters.md", "r") as file:

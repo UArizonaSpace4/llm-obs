@@ -1,3 +1,4 @@
+import streamlit as st
 import yaml
 import re
 import sys
@@ -5,13 +6,13 @@ import threading
 import queue
 import os
 import time
-import numpy as np
 from skyfield.api import load, EarthSatellite
 import plotly.graph_objects as go 
 from astropy.time import Time 
-import numpy as np
 import pandas as pd
 import datetime
+import logging
+
 
 
 def extract_valid_yaml(text):
@@ -126,189 +127,6 @@ def stream_function_output(func, **kwargs):
         pass
 
 
-def read_tle_file(filename):
-    tle_dict = {}
-    with open(filename, 'r') as f:
-        lines = f.readlines()
-        i = 0
-        while i < len(lines):
-            if lines[i].startswith('0'):
-                # Skip the satellite name line
-                tle_line1 = lines[i + 1].strip()
-                tle_line2 = lines[i + 2].strip()
-                # Extract NORAD ID from TLE line 1 (columns 3-7)
-                norad_id = tle_line1[2:7].strip()
-                tle_dict[norad_id] = (tle_line1, tle_line2)
-                i += 3
-            else:
-                i += 1
-    return tle_dict
-
-
-def create_ground_track(satellite, t0, t1, ts, sat_name):
-    # Generate 50 points between t0 and t1
-    times = np.linspace(t0, t1, 50)
-    times = ts.from_julian_date(times)
-    
-    # Calculate positions
-    positions = satellite.at(times)
-    lons, lats = positions.subpoint().longitude.degrees, positions.subpoint().latitude.degrees
-    
-    return {
-        'lon': lons,
-        'lat': lats,
-        'name': sat_name
-    }
-
-def plot_passages(passages_df, tle_dict):
-    """Plot satellite passages on an interactive map."""
-    import plotly.graph_objects as go
-    import numpy as np
-    from skyfield.api import load, EarthSatellite
-
-    fig = go.Figure()
-
-    # Add geostationary belt visualization
-    belt_lons = np.linspace(-180, 180, 360)
-    belt_lats = np.zeros_like(belt_lons)
-
-    fig.add_trace(go.Scattergeo(
-        lon=belt_lons,
-        lat=belt_lats,
-        mode='lines',
-        name='GEO Belt',
-        line=dict(
-            color='rgba(100,100,100,0.8)',
-            width=2,
-            dash='dash'
-        ),
-        showlegend=True
-    ))
-
-    ts = load.timescale()
-
-    # Plot each satellite
-    for _, sat_row in passages_df.iterrows():
-        sat_id = sat_row['ID']
-        sat_name = sat_row['name']
-
-        if sat_id in tle_dict:
-            tle_lines = tle_dict[sat_id]
-            satellite = EarthSatellite(tle_lines[0], tle_lines[1], sat_name, ts)
-
-            t = ts.tt_jd(float(sat_row['t0 [JD]']))
-            geocentric = satellite.at(t)
-            subpoint = geocentric.subpoint()
-
-            fig.add_trace(go.Scattergeo(
-                lon=[subpoint.longitude.degrees],
-                lat=[subpoint.latitude.degrees],
-                mode='markers+text',
-                name=sat_name,
-                marker=dict(
-                    size=10,
-                    symbol='diamond',
-                    line=dict(
-                        width=1,
-                        color='white'
-                    )
-                ),
-                text=[sat_name],
-                textposition="top center",
-                textfont=dict(
-                    size=14,
-                    color='black'
-                ),
-                hovertemplate=(
-                    "<b>%{text}</b><br>" +
-                    "Longitude: %{lon:.2f}°<br>" +
-                    "Latitude: %{lat:.2f}°<br>" +
-                    "<extra></extra>"
-                ),
-                showlegend=True
-            ))
-
-    # Add Tucson marker
-    fig.add_trace(go.Scattergeo(
-        lon=[-110.9747],
-        lat=[32.2226],
-        mode='markers+text',
-        name='Tucson',
-        marker=dict(
-            size=12,
-            symbol='star',
-            color='red',
-            line=dict(
-                width=1,
-                color='black'
-            )
-        ),
-        text=['Tucson'],
-        textposition="top center",
-        showlegend=True,
-        hovertemplate="<b>Tucson Observatory</b><br>" +
-                     "Lat: 32.2226°N<br>" +
-                     "Lon: 110.9747°W<br>" +
-                     "<extra></extra>"
-    ))
-
-    # Update layout
-    fig.update_layout(
-        title=dict(
-            text="Satellite Positions",
-            y=0.95,
-            x=0.5,
-            xanchor='center',
-            yanchor='top',
-            font=dict(size=20)
-        ),
-        showlegend=True,
-        legend=dict(
-            yanchor="top",
-            y=0.9,
-            xanchor="right",
-            x=0.99,
-            bgcolor='rgba(255,255,255,0.9)',
-            bordercolor='rgba(0,0,0,0.2)',
-            borderwidth=1
-        ),
-        geo=dict(
-            projection_type='equirectangular',
-            center=dict(lon=-110.9747, lat=32.2226),  # Tucson coordinates
-            showland=True,
-            showcountries=True,
-            showocean=True,
-            landcolor='rgb(243, 243, 243)',
-            oceancolor='rgb(204, 229, 255)',
-            lataxis=dict(
-                range=[-30, 90],   # Adjusted to show more of North America
-                dtick=30
-            ),
-            lonaxis=dict(
-                range=[-180, 180],
-                dtick=60
-            ),
-            domain=dict(
-                x=[0, 1],  # Full width
-                y=[0, 1]   # Full height
-            ),
-            bgcolor='rgba(255,255,255,0)',
-            showcoastlines=True,
-            coastlinecolor='rgb(100,100,100)',
-            showframe=False,
-            #fitbounds="locations",  # Ensure the map fits the data
-            scope='world',  # Ensure world map is loaded
-            projection_scale=2,  # Initial zoom level
-        ),
-        height=600,  # Adjust as needed
-        margin=dict(l=10, r=10, t=50, b=10),  # Minimal margins
-        paper_bgcolor='white',
-        plot_bgcolor='white'
-    )
-
-    return fig
-
-
 def serialize_content(content, content_type):
     """
     Serializes message content based on its type.
@@ -358,3 +176,68 @@ def format_date_for_filename(time_start: str) -> str:
     date_utc_with_underscore = day_utc.replace('-', '_')
     
     return date_utc_with_underscore
+
+
+def display_message(msg, type: str = "text"):
+    """Display a message in Streamlit with different formatting options.
+
+    Args:
+        msg: The message to display
+        type: Format type - 'text', 'code', or 'md'
+    """
+    if type == "text" or type is None:
+        st.write(msg)
+    elif type == "code":
+        st.code(msg)
+    elif type == "md":
+        st.markdown(msg)
+    else:
+        st.text(msg)  # Default to text for unknown types
+
+
+def display_and_save(msg, type="text", role=None, append_to_last=True):
+    """
+        Write a message to the chat and save it to the session state.
+
+        Args:
+            msg: The message to write
+            type: The type of message - 'text', 'code', 'md', or None (unspecified)
+            role: The role of the speaker (user, assistant, status). If not provided, 
+                    it will update the content of the last message appended
+            append_to_last: If True and role is None, it will append the message to the last
+                    message, as an array of strings (same with the type). If False, 
+                    it will replace the content.
+    """
+    display_message(msg, type)
+    if role:
+        st.session_state.messages.append({"role": role, "type": [type], "content": [msg]})
+    else:
+        if append_to_last and "content" in st.session_state.messages[-1]:
+            st.session_state.messages[-1]["content"].append(msg)
+        else:
+            st.session_state.messages[-1]["content"] = [msg]
+        if append_to_last and "type" in st.session_state.messages[-1]:
+            st.session_state.messages[-1]["type"].append(type)
+        else:
+            st.session_state.messages[-1]["type"] = [type]
+
+
+def display_messages():
+    """Function to display chat messages"""
+    logging.error(st.session_state.messages)
+    for message in st.session_state.messages:
+        if message["role"] == "tool":
+            with st.status(label=message["label"], state=message["state"]):
+                if "content" in message:
+                    if isinstance(message["content"], list):
+                        for content in message["content"]:
+                            display_message(content)
+                    else:
+                        display_message(message["content"])
+        else:
+            with st.chat_message(message["role"]):
+                if isinstance(message["content"], list):
+                    for content in message["content"]:
+                        display_message(content)
+                else:
+                    display_message(message["content"])

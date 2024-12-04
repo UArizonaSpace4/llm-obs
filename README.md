@@ -28,4 +28,5 @@ docker compose build
 docker compose up
 ```
 
-The app will be deployed in port 8501
+The app will be deployed in port 8501. Wait a aminute before trying it out for the first time,
+the satellite predictor takes a while to be fully running and listening to requests.
