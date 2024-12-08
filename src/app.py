@@ -18,10 +18,13 @@ from db import Base
 from utils import display_and_save
 from utils import display_messages # for development
 from streamlit.runtime.scriptrunner import get_script_run_ctx
+from datetime import datetime
 
 
 # General config
 IS_DEV = os.getenv("IS_DEVELOPMENT", "True").lower() == "true"
+IS_MOCK = os.getenv("IS_MOCK", "False").lower() == "true"
+IS_DOCKER = os.getenv("IS_DOCKER", "False").lower() == "true"
 STORE_CHATS = os.getenv("STORE_CHATS", "True").lower() == "true"
 # Get database connection parameters from environment variables or use defaults
 DB_HOST = os.environ.get('DB_HOST', 'localhost')
@@ -33,10 +36,11 @@ EXCLUDE_TYPES= ["plot"] # types of messages to exclude from context
 
 ctx = get_script_run_ctx()
 project_root = Path(__file__).parent.parent.absolute()
-is_mock = os.getenv("IS_MOCK", "False").lower() == "true"
-is_docker = os.getenv("IS_DOCKER", "False").lower() == "true"
-obs_planner_root = "/app/obs_planner" if is_docker else os.getenv("OBS_PLANNER_ROOT")
+obs_planner_root = "/app/obs_planner" if IS_DOCKER else os.getenv("OBS_PLANNER_ROOT")
 satpred_output_dir = os.getenv("SAT_PREDICTOR_OUTPUT_DIR")
+current_datetime = datetime.now()
+current_date = current_datetime.strftime("%Y-%m-%d")
+current_time = current_datetime.strftime("%H:%M:%S")
 
 # Import observation planner
 sys.path.append(obs_planner_root)
@@ -103,7 +107,7 @@ def run_observation_planner(*config_parameters, st_status):
         display_and_save("Configuration")
         display_and_save(yaml.dump(planner_conf, sort_keys=False, default_flow_style=False), type="code")
 
-        if not is_mock:
+        if not IS_MOCK:
             st.write_stream(utils.stream_function_output(obs_planner.main, config_dict=planner_conf, txt_to_json=False, fill_with_defaults=False))
         lbl = "Observation planner completed"
         state = "complete"
@@ -119,6 +123,7 @@ def run_observation_planner(*config_parameters, st_status):
 
 
 def query_obs_db(psql):
+    tool_error = False
     with st.status("Querying the database...", state="running") as status:
         st.session_state.messages.append({"role": "tool"})
         try:
@@ -133,13 +138,13 @@ def query_obs_db(psql):
             lbl = "Error querying the database"
             state = "error"
             tool_error = True
-        return res
-    status.update(label=lbl, state=state)
-    st.session_state.messages[-1].update({"label": lbl, "state": state})
+        status.update(label=lbl, state=state)
+        st.session_state.messages[-1].update({"label": lbl, "state": state})
 
     if not tool_error:
         with st.chat_message("assistant"):
             display_and_save(res, role="assistant")
+    return tool_error
     
 
 def handle_tool_call(function_name, arguments, tool_call_id):
@@ -157,7 +162,7 @@ def handle_tool_call(function_name, arguments, tool_call_id):
 
             # Showing passages
             if not tool_error:
-                if is_mock:
+                if IS_MOCK:
                     passages_file = os.path.join(project_root, "mock_data", "2024_11_15__Passage_Galaxy.txt")
                     tle_file = os.path.join(project_root, "mock_data", "2024_11_15__TLE_Galaxy.txt")
                 else:
@@ -205,10 +210,10 @@ def handle_tool_call(function_name, arguments, tool_call_id):
             
         case "query_obs_db":
             # Query the database
-            if "query" not in arguments:
+            if "query" not in args_dict:
                 st.write("Error calling the database. Query not found")
             else:
-                query_obs_db(psql=arguments["query"])
+                query_obs_db(psql=args_dict.get("query"))
         case _:
             raise ValueError(f"Unknown function name: {function_name}")
 
@@ -302,6 +307,9 @@ with open("src/prompts/preset.json", "r") as file:
 # Read system prompt (instructions) from file
 with open("src/prompts/instructions.md", "r") as file:
     system_prompt = file.read()
+    system_prompt = system_prompt.replace("{{DATE}}", current_date)
+    system_prompt = system_prompt.replace("{{TIME}}", current_time) 
+    system_prompt = system_prompt.replace("{{USERNAME}}", UserData["username"])
 
 # Read demonstrations (few shot prompts) and add them as messages
 with open("src/prompts/demonstrations.json", "r") as file:
@@ -311,7 +319,7 @@ with open("src/prompts/demonstrations.json", "r") as file:
 # Load three random starters from the starters file
 with open("src/prompts/starters.md", "r") as file:
     starters = file.readlines()
-    starters = [starter.strip() for starter in starters]
+    starters = [starter.strip() for starter in starters if not starter.startswith('#') and starter.strip()]
     starters = random.sample(starters, 3)
 
 

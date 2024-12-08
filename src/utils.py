@@ -222,7 +222,6 @@ def display_and_save(msg, type="text", role=None, append_to_last=True):
 
 def display_messages():
     """Function to display chat messages"""
-    logging.error(st.session_state.messages)
     for message in st.session_state.messages:
         if message["role"] == "tool":
             with st.status(label=message["label"], state=message["state"]):
