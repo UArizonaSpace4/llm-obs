@@ -17,22 +17,26 @@ from sqlalchemy import create_engine # for development
 from db import Base
 from utils import display_and_save
 from utils import display_messages # for development
+from streamlit.runtime.scriptrunner import get_script_run_ctx
+
 
 # General config
-is_development = os.getenv("IS_DEVELOPMENT", "True").lower() == "true"
+IS_DEV = os.getenv("IS_DEVELOPMENT", "True").lower() == "true"
+STORE_CHATS = os.getenv("STORE_CHATS", "True").lower() == "true"
 # Get database connection parameters from environment variables or use defaults
 DB_HOST = os.environ.get('DB_HOST', 'localhost')
 DB_PORT = os.environ.get('DB_PORT', '5432')
 DB_USER = os.environ.get('DB_USER', 'postgres')
 DB_PASSWORD = os.environ.get('DB_PASSWORD', 'postgres')
 DB_NAME = os.environ.get('DB_NAME', 'your_database_name')
+EXCLUDE_TYPES= ["plot"] # types of messages to exclude from context
 
+ctx = get_script_run_ctx()
 project_root = Path(__file__).parent.parent.absolute()
 is_mock = os.getenv("IS_MOCK", "False").lower() == "true"
 is_docker = os.getenv("IS_DOCKER", "False").lower() == "true"
 obs_planner_root = "/app/obs_planner" if is_docker else os.getenv("OBS_PLANNER_ROOT")
 satpred_output_dir = os.getenv("SAT_PREDICTOR_OUTPUT_DIR")
-tool_error = False
 
 # Import observation planner
 sys.path.append(obs_planner_root)
@@ -182,15 +186,19 @@ def handle_tool_call(function_name, arguments, tool_call_id):
                         display_and_save(display_df, role="assistant")
 
                         fig = planner.plot_passages(passages, tle_dict)
-                        display_and_save(fig)
+                        display_and_save(fig, type="plot")
 
                         # Call the LLM to explain the results (No preset tools)
                         kwargs = preset.copy(); del kwargs['tools'] 
                         compl = askgpt(
                             user = "The observation planner has finished. Answer the last user prompt",
                             system = system_prompt, 
-                            context=prepare_context_messages(st.session_state.messages, n=None, exclude_tool=True),
+                            context=prepare_context_messages(st.session_state.messages, 
+                                                             n=None, exclude_tool=True,
+                                                             exclude_types=EXCLUDE_TYPES),
                             stream=True,
+                            store=STORE_CHATS,
+                            metadata=dict(st_session_id=ctx.session_id),
                             **kwargs)
                         cntnt = st.write_stream(stream_response(compl))
                         st.session_state.messages.append({"role": "assistant", "content": cntnt})
@@ -218,10 +226,12 @@ def handle_user_prompt(prompt):
     """
     kwargs = preset.copy()
     context = prepare_context_messages(msgs=demonstrations + st.session_state.messages, 
-                                       n=CONTEXT_WINDOW, 
-                                       exclude_tool=False)
+                                       n=CONTEXT_WINDOW, exclude_tool=False, 
+                                       exclude_types=EXCLUDE_TYPES)
     compl = askgpt(user = prompt, system = system_prompt, context=context, 
-                   stream=True, tool_choice="auto", parallel_tool_calls=False, store=True, **kwargs)
+                   stream=True, tool_choice="auto", parallel_tool_calls=False, 
+                   store=STORE_CHATS, 
+                   metadata=dict(st_session_id=ctx.session_id), **kwargs)
     # Stream the response
     with st.chat_message("assistant"):       
         assistant_response = st.write_stream(stream_response(compl))
@@ -256,7 +266,7 @@ def append_user_prompt(prompt: str = None):
 ######################################################################
 
 # Create database, if needed and if we are in development
-if is_development:
+if IS_DEV:
     DATABASE_URL = f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
     engine = create_engine(DATABASE_URL)
     Base.metadata.create_all(bind=engine, checkfirst=True)

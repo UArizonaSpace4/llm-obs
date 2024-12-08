@@ -10,6 +10,8 @@ import os
 
 import streamlit as st
 import utils
+from typing import List, Dict, Optional
+
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 client = openai.OpenAI()
@@ -32,7 +34,8 @@ def schema(f):
     return dict(name=f.__name__, description=f.__doc__, parameters=s)
 
 
-def prepare_context_messages(msgs, n=None, exclude_tool=False):
+def prepare_context_messages(msgs: List[Dict[str, any]], n: Optional[int] = None, 
+                             exclude_tool: bool = False, exclude_types: List[str] = []) -> List[Dict[str, any]]:
     """
     Prepares the last n messages from session state to send as context to the LLM.
 
@@ -40,6 +43,7 @@ def prepare_context_messages(msgs, n=None, exclude_tool=False):
         msgs (List[dict]): List of messages to prepare.
         n (int, optional): Number of messages to include. If None, include all messages.
         exclude_tool (bool, optional): If True, filters out messages with role "tool".
+        exclude_types (List[str], optional): List of message types to exclude.
 
     Returns:
         List[dict]: A list of serialized messages.
@@ -59,15 +63,13 @@ def prepare_context_messages(msgs, n=None, exclude_tool=False):
         if "tool_call_id" in message:
             prepared_message["tool_call_id"] = message["tool_call_id"]
 
-        if isinstance(content, list):
-            serialized_items = []
-            types = message.get("type", ["text"] * len(content))
-            for item, item_type in zip(content, types):
+        if not isinstance(content, list): content = [content]
+        serialized_items = []
+        types = message.get("type", ["text"] * len(content))
+        for item, item_type in zip(content, types):
+            if item_type not in exclude_types:
                 serialized_items.append(utils.serialize_content(item, item_type))
-            prepared_message["content"] = "\n".join(serialized_items)
-        else:
-            content_type = message.get("type", "text")
-            prepared_message["content"] = utils.serialize_content(content, content_type)
+        prepared_message["content"] = "\n".join(serialized_items)
 
         prepared_messages.append(prepared_message)
     

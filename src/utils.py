@@ -183,16 +183,14 @@ def display_message(msg, type: str = "text"):
 
     Args:
         msg: The message to display
-        type: Format type - 'text', 'code', or 'md'
+        type: Format type - 'text', 'code', 'md', ...
     """
-    if type == "text" or type is None:
-        st.write(msg)
-    elif type == "code":
+    if type == "code":
         st.code(msg)
     elif type == "md":
         st.markdown(msg)
     else:
-        st.text(msg)  # Default to text for unknown types
+        st.write(msg)  # Default to text for unknown types
 
 
 def display_and_save(msg, type="text", role=None, append_to_last=True):
