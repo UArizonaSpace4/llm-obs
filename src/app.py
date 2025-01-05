@@ -26,6 +26,7 @@ IS_DEV = os.getenv("IS_DEVELOPMENT", "True").lower() == "true"
 IS_MOCK = os.getenv("IS_MOCK", "False").lower() == "true"
 IS_DOCKER = os.getenv("IS_DOCKER", "False").lower() == "true"
 STORE_CHATS = os.getenv("STORE_CHATS", "True").lower() == "true"
+CONTEXT_WINDOW = int(os.getenv("CONTEXT_WINDOW", 4))
 # Get database connection parameters from environment variables or use defaults
 DB_HOST = os.environ.get('DB_HOST', 'localhost')
 DB_PORT = os.environ.get('DB_PORT', '5432')
@@ -122,14 +123,17 @@ def run_observation_planner(*config_parameters, st_status):
     return tool_error, planner_conf
 
 
-def query_obs_db(psql):
+def query_obs_db(psql, params=None):
     tool_error = False
     with st.status("Querying the database...", state="running") as status:
-        st.session_state.messages.append({"role": "tool"})
         try:
             res = obs_planner.database.push_to_db(
                 credentials = db_credentials, 
-                psql = psql)
+                psql = psql,
+                params = params)
+            st.write(psql)
+            st.write(params)
+            display_and_save(res)
             lbl = "Query completed"
             state = "complete"
         except Exception as e:
@@ -141,9 +145,6 @@ def query_obs_db(psql):
         status.update(label=lbl, state=state)
         st.session_state.messages[-1].update({"label": lbl, "state": state})
 
-    if not tool_error:
-        with st.chat_message("assistant"):
-            display_and_save(res, role="assistant")
     return tool_error
     
 
@@ -192,33 +193,33 @@ def handle_tool_call(function_name, arguments, tool_call_id):
 
                         fig = planner.plot_passages(passages, tle_dict)
                         display_and_save(fig, type="plot")
-
-                        # Call the LLM to explain the results (No preset tools)
-                        kwargs = preset.copy(); del kwargs['tools'] 
-                        compl = askgpt(
-                            user = "The observation planner has finished. Answer the last user prompt",
-                            system = system_prompt, 
-                            context=prepare_context_messages(st.session_state.messages, 
-                                                             n=None, exclude_tool=True,
-                                                             exclude_types=EXCLUDE_TYPES),
-                            stream=True,
-                            store=STORE_CHATS,
-                            metadata=dict(st_session_id=ctx.session_id),
-                            **kwargs)
-                        cntnt = st.write_stream(stream_response(compl))
-                        st.session_state.messages.append({"role": "assistant", "content": cntnt})
             
         case "query_obs_db":
             # Query the database
             if "query" not in args_dict:
                 st.write("Error calling the database. Query not found")
             else:
-                query_obs_db(psql=args_dict.get("query"))
+                query_obs_db(psql=args_dict.get("query"), params=args_dict.get("params"))
         case _:
             raise ValueError(f"Unknown function name: {function_name}")
+        
+    # Call the LLM to explain the results (No preset tools)
+    kwargs = preset.copy(); del kwargs['tools'] 
+    compl = askgpt(
+        user = "Answer the last user prompt",
+        system = system_prompt, 
+        context=prepare_context_messages(st.session_state.messages, 
+                                            n=None, exclude_tool=False,
+                                            exclude_types=EXCLUDE_TYPES),
+        stream=True,
+        store=STORE_CHATS,
+        metadata=dict(st_session_id=ctx.session_id),
+        **kwargs)
+    cntnt = st.write_stream(stream_response(compl))
+    st.session_state.messages.append({"role": "assistant", "content": cntnt})
 
 
-def handle_user_prompt(prompt):   
+def handle_user_prompt(prompt, context_window=4):   
     """
     Handles the prompt input by the user, interacts with the LLM to generate a response,
     processes the response to create a configuration, and runs the corresponding tool, if neccesasry.
@@ -231,7 +232,7 @@ def handle_user_prompt(prompt):
     """
     kwargs = preset.copy()
     context = prepare_context_messages(msgs=demonstrations + st.session_state.messages, 
-                                       n=CONTEXT_WINDOW, exclude_tool=False, 
+                                       n=context_window, exclude_tool=False, 
                                        exclude_types=EXCLUDE_TYPES)
     compl = askgpt(user = prompt, system = system_prompt, context=context, 
                    stream=True, tool_choice="auto", parallel_tool_calls=False, 
@@ -307,14 +308,13 @@ with open("src/prompts/preset.json", "r") as file:
 # Read system prompt (instructions) from file
 with open("src/prompts/instructions.md", "r") as file:
     system_prompt = file.read()
-    system_prompt = system_prompt.replace("{{DATE}}", current_date)
-    system_prompt = system_prompt.replace("{{TIME}}", current_time) 
+    system_prompt = system_prompt.replace("{{CURRENT_DATE}}", current_date)
+    system_prompt = system_prompt.replace("{{CURRENT_TIME}}", current_time) 
     system_prompt = system_prompt.replace("{{USERNAME}}", UserData["username"])
 
 # Read demonstrations (few shot prompts) and add them as messages
 with open("src/prompts/demonstrations.json", "r") as file:
     demonstrations = json.load(file)
-    CONTEXT_WINDOW = max(len(demonstrations), 3)
 
 # Load three random starters from the starters file
 with open("src/prompts/starters.md", "r") as file:
@@ -336,7 +336,11 @@ else:
     display_messages()
     messages = st.session_state.messages
     if messages[-1]["role"] == "user":
-        handle_user_prompt(messages[-1]["content"])
+        if len(messages) == 1:
+            cwin = len(demonstrations)
+        else:
+            cwin = min(len(demonstrations) + len(messages), CONTEXT_WINDOW)
+        handle_user_prompt(messages[-1]["content"], context_window=cwin)
 
 # Chat input for user messages
 st.chat_input("Type your message here...", key="user_prompt", 

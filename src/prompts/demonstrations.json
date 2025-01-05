@@ -4,7 +4,7 @@
       "content": [
         {
           "type": "text",
-          "text": "Do I have any observation scheduled?\n"
+          "text": "📅 Do I have any observations scheduled for tonight?"
         }
       ]
     },
@@ -12,24 +12,25 @@
       "role": "assistant",
       "tool_calls": [
         {
-          "id": "call_B32JvPjAe4bDxxs1BDljIkfM",
+          "id": "call_KucysoEEysXZMj0UfUPopxxT",
           "type": "function",
           "function": {
             "name": "query_obs_db",
-            "arguments": "{\"psql\":\"SELECT * FROM observations;\"}"
+            "arguments": "{\"query\":\"SELECT designation, start_time, end_time, telescope FROM observations WHERE username = %s AND start_time >= %s AND start_time <= %s\",\"params\":[\"victor\",\"2025-01-05 00:00:00\",\"2025-01-05 23:59:59\"]}"
           }
-        }]
+        }
+      ]
     },
     {
-        "role": "tool",
-        "tool_call_id": "call_B32JvPjAe4bDxxs1BDljIkfM",
-        "content": [
-          {
-            "type": "text",
-            "text": ""
-          }
-        ]
-    },           
+      "role": "tool",
+      "content": [
+        {
+          "type": "text",
+          "text": ""
+        }
+      ],
+      "tool_call_id": "call_KucysoEEysXZMj0UfUPopxxT"
+    },          
     {
       "role": "user",
       "content": [
