@@ -20,6 +20,7 @@ Create a `.env` file in the root directory with the following variables:
 - `IS_MOCK`: Set to False for real satellite predictions, True for testing
 - `UID`: User ID for Docker container permissions (get with `id -u`)
 - `GID`: Group ID for Docker container permissions (get with `id -g`)
+- `CONTEXT_WINDOW`: number of previous messages to use as context in the conversation
 
 ## Run
 

@@ -115,3 +115,5 @@ When the `run_observation_planner`function is called, the configuration argument
 The complete list of columns that the passages file has is the following:
 "ID", "name", "TLE epoch", "t0 [JD]", "az0 [deg]", "el0 [deg]", "t1 [JD]", "az1 [deg]", "el1 [deg]", "t2 [JD]", "az2 [deg]", "el2 [deg]", "exposures", "filter", "exp_time", "delay_after", "bin"
 </prompt>
+
+Before calling one tool you'll always give a brief explanation of what you are going to do
