@@ -11,6 +11,7 @@ import os
 import streamlit as st
 import utils
 from typing import List, Dict, Optional
+import logging as log
 
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -24,7 +25,12 @@ def askgpt(user, system=None, model="gpt-4o", context=[], **kwargs):
     if system: msgs.append({"role": "system", "content": system})
     if context and len(context) > 0: msgs += context
     msgs.append({"role": "user", "content": user})
-    return client.chat.completions.create(model=model, messages=msgs, **kwargs)
+    try:
+        return client.chat.completions.create(model=model, messages=msgs, **kwargs)
+    except Exception as e:
+        log.error(f"Error in askgpt: {str(e)}")
+        log.error(f"Messages that caused the error: {json.dumps(msgs, indent=2)}")
+        raise e
 
 
 def schema(f):
