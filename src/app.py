@@ -19,7 +19,7 @@ from utils import display_and_save
 from utils import display_messages # for development
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 from datetime import datetime
-
+import weave
 
 # General config
 IS_DEV = os.getenv("IS_DEVELOPMENT", "True").lower() == "true"
@@ -34,6 +34,8 @@ DB_USER = os.environ.get('DB_USER', 'postgres')
 DB_PASSWORD = os.environ.get('DB_PASSWORD', 'postgres')
 DB_NAME = os.environ.get('DB_NAME', 'your_database_name')
 EXCLUDE_TYPES= ["plot"] # types of messages to exclude from context
+
+weave.init(os.getenv("WEAVE_PROJECT_NAME"))
 
 ctx = get_script_run_ctx()
 project_root = Path(__file__).parent.parent.absolute()

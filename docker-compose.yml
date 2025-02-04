@@ -19,9 +19,11 @@ services:
       - OBS_PLANNER_IP=satellite_predictor # network created by compose
       - OBS_PLANNER_PORT=1929
       - SAT_PREDICTOR_OUTPUT_DIR=/app/satpred_output # otherwise main.py variable "LocalOutPath" would break
+      - WEAVE_PROJECT_NAME=llm-obs
     depends_on:
       - db
       - satellite_predictor
+    command: ["sh", "-c", "wandb login --relogin ${WANDB_API_KEY}  && python -m streamlit run src/app.py --server.port=8501 --server.address=0.0.0.0"]
 
   db:
     image: postgres:13

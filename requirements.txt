@@ -9,3 +9,4 @@ skyfield
 SQLAlchemy
 fastcore
 psycopg2-binary
+weave

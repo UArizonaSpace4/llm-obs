@@ -2,7 +2,7 @@ services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: ./Dockerfile        
     ports:
       - "8501:8501"
       - 5678:5678
@@ -20,10 +20,11 @@ services:
       - OBS_PLANNER_IP=satellite_predictor # network created by compose
       - OBS_PLANNER_PORT=1929
       - SAT_PREDICTOR_OUTPUT_DIR=/app/satpred_output # otherwise main.py variable "LocalOutPath" would break
+      - WEAVE_PROJECT_NAME=llm-obs
     depends_on:
       - db
       - satellite_predictor
-    command: ["sh", "-c", "pip install debugpy -t /tmp && python /tmp/debugpy --listen 0.0.0.0:5678 -m streamlit run src/app.py --server.port=8501 --server.address=0.0.0.0"]
+    command: ["sh", "-c", "pip install debugpy -t /tmp && wandb login --relogin ${WANDB_API_KEY}  && python /tmp/debugpy --listen 0.0.0.0:5678 -m streamlit run src/app.py --server.port=8501 --server.address=0.0.0.0"]
 
   db:
     image: postgres:13
