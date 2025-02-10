@@ -36,7 +36,7 @@ services:
 
   satellite_predictor:
     build:
-      context: ./obs_planner/dockerfiles
+      context: ./obs_planner
       dockerfile: Dockerfile
     environment:
       - LOCAL_UID=${UID}
