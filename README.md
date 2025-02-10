@@ -21,6 +21,7 @@ Create a `.env` file in the root directory with the following variables:
 - `UID`: User ID for Docker container permissions (get with `id -u`)
 - `GID`: Group ID for Docker container permissions (get with `id -g`)
 - `CONTEXT_WINDOW`: number of previous messages to use as context in the conversation
+- `WANDB_API_KEY`: Weave access token for LLMOps
 
 ## Run
 
