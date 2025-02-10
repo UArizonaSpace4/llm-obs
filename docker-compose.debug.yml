@@ -2,7 +2,7 @@ services:
   app:
     build:
       context: .
-      dockerfile: ./Dockerfile        
+      dockerfile: Dockerfile        
     ports:
       - "8501:8501"
       - 5678:5678
@@ -37,7 +37,7 @@ services:
 
   satellite_predictor:
     build:
-      context: ./obs_planner/dockerfiles
+      context: ./obs_planner
       dockerfile: Dockerfile
     environment:
       - LOCAL_UID=${UID}
