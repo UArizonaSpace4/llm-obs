@@ -2,9 +2,10 @@ services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile        
     ports:
       - "8501:8501"
+      - 5678:5678
     volumes:
       - ./src:/app/src
       - ./mock_data:/app/mock_data
@@ -23,7 +24,7 @@ services:
     depends_on:
       - db
       - satellite_predictor
-    command: ["sh", "-c", "wandb login --relogin ${WANDB_API_KEY}  && python -m streamlit run src/app.py --server.port=8501 --server.address=0.0.0.0"]
+    command: ["sh", "-c", "pip install debugpy -t /tmp && wandb login --relogin ${WANDB_API_KEY}  && python /tmp/debugpy --listen 0.0.0.0:5678 -m streamlit run src/app.py --server.port=8501 --server.address=0.0.0.0"]
 
   db:
     image: postgres:13
