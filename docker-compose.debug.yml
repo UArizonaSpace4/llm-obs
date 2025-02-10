@@ -9,7 +9,7 @@ services:
     volumes:
       - ./src:/app/src
       - ./mock_data:/app/mock_data
-      - ./output:/app/satpred_output
+      - ${SAT_PREDICTOR_OUTPUT_DIR}:/app/satpred_output
 
     env_file:
       - .env
@@ -29,9 +29,9 @@ services:
   db:
     image: postgres:13
     environment:
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=targets
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
     volumes:
       - POSTGRES_data:/var/lib/postgresql/data
 
