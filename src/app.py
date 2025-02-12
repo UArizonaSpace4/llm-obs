@@ -91,7 +91,7 @@ def stream_response(compl, yield_in="content", sleep=0.01):
         if sleep: time.sleep(0.01)  # Simulate delay for streaming effect
 
 
-def run_observation_planner(*config_parameters, st_status):
+def run_observation_planner(config_parameters, st_status):
     """
     Run the observation planner tool with the provided arguments.
     This function takes a list of arguments, passes them to the observation planner tool,
@@ -104,9 +104,11 @@ def run_observation_planner(*config_parameters, st_status):
     tool_error = False
     # Show a status container while the model is thinking
     planner_conf = default_conf
-    planner_conf.update(config_parameters)
+    planner_conf["Criteria"].update(config_parameters)
 
     try:
+        display_and_save("Parameters to update:")
+        display_and_save(yaml.dump(config_parameters, sort_keys=False, default_flow_style=False), type="code")
         display_and_save("Configuration")
         display_and_save(yaml.dump(planner_conf, sort_keys=False, default_flow_style=False), type="code")
 
@@ -140,7 +142,9 @@ def query_obs_db(psql, params=None):
             state = "complete"
         except Exception as e:
             logging.exception(e)
-            st.write(e)
+            st.write(psql)
+            st.write(params)
+            display_and_save(e)
             lbl = "Error querying the database"
             state = "error"
             tool_error = True
@@ -156,12 +160,12 @@ def handle_tool_call(function_name, arguments, tool_call_id):
     match function_name.lower():
         case "run_observation_planner":
             with st.status("Running observation planner...", state="running") as status:
-                config_args = args_dict.get("config_args", [])
+                config_args = args_dict.get("config_parameters", [])
                 config_dict = {}
                 for param in config_args:
                     name, value = param.split(":", 1)
-                    config_dict[name.strip()] = value.strip()
-                tool_error, planner_conf = run_observation_planner(**config_dict, st_status=status)
+                    config_dict[name.strip()] = utils.try_convert_number(value.strip())
+                tool_error, planner_conf = run_observation_planner(config_dict, st_status=status)
 
             # Showing passages
             if not tool_error:

@@ -193,6 +193,28 @@ def display_message(msg, type: str = "text"):
         st.write(msg)  # Default to text for unknown types
 
 
+def save_message(msg, type: str = "text", role=None, append_to_last=True):
+    """
+    Save a message to the session state.
+
+    Args:
+        msg: The message to save
+        type: The type of message - 'text', 'code', 'md', or None (unspecified)
+        append_to_last: If True, it will append the message to the last message, as an array of strings (same with the type). If False, it will replace the content.
+    """
+    if role:
+        st.session_state.messages.append({"role": role, "type": [type], "content": [msg]})
+    else:
+        if append_to_last and "content" in st.session_state.messages[-1]:
+            st.session_state.messages[-1]["content"].append(msg)
+        else:
+            st.session_state.messages[-1]["content"] = [msg]
+        if append_to_last and "type" in st.session_state.messages[-1]:
+            st.session_state.messages[-1]["type"].append(type)
+        else:
+            st.session_state.messages[-1]["type"] = [type]
+
+
 def display_and_save(msg, type="text", role=None, append_to_last=True):
     """
         Write a message to the chat and save it to the session state.
@@ -207,17 +229,7 @@ def display_and_save(msg, type="text", role=None, append_to_last=True):
                     it will replace the content.
     """
     display_message(msg, type)
-    if role:
-        st.session_state.messages.append({"role": role, "type": [type], "content": [msg]})
-    else:
-        if append_to_last and "content" in st.session_state.messages[-1]:
-            st.session_state.messages[-1]["content"].append(msg)
-        else:
-            st.session_state.messages[-1]["content"] = [msg]
-        if append_to_last and "type" in st.session_state.messages[-1]:
-            st.session_state.messages[-1]["type"].append(type)
-        else:
-            st.session_state.messages[-1]["type"] = [type]
+    save_message(msg, type, role, append_to_last)
 
 
 def display_messages():
@@ -238,3 +250,34 @@ def display_messages():
                         display_message(content)
                 else:
                     display_message(message["content"])
+
+
+def try_convert_number(val):
+    """Convert a value to number if possible.
+
+    This function attempts to convert a given value to a number (integer or float).
+    If the conversion is successful and results in a whole number, returns an integer.
+    If the conversion is successful but results in a decimal number, returns a float.
+    If the conversion fails, returns the original value unchanged.
+
+    Args:
+        val: The value to attempt to convert to a number. Can be any type.
+
+    Returns:
+        int: If the value can be converted to a number and is a whole number.
+        float: If the value can be converted to a number and is a decimal number.
+        Any: The original value if conversion to number fails.
+
+    Examples:
+        >>> try_convert_number("123")
+        123
+        >>> try_convert_number("123.45")
+        123.45
+        >>> try_convert_number("abc")
+        'abc'
+    """
+    try:
+        n = float(val)
+        return int(n) if n.is_integer() else n
+    except ValueError:
+        return val

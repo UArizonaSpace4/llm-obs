@@ -55,10 +55,20 @@ def prepare_context_messages(msgs: List[Dict[str, any]], n: Optional[int] = None
         List[dict]: A list of serialized messages.
     """
     if n is not None:
-        msgs = msgs[-n:]
-    
+        user_count = 0
+        collected = []
+        for message in reversed(msgs):
+            collected.append(message)
+            if message["role"] == "user":
+                user_count += 1
+                if user_count == n:
+                    break
+
+        collected.reverse()
+    else:
+        collected = msgs
     prepared_messages = []
-    for message in msgs:
+    for message in collected:
         if exclude_tool and message.get("role") == "tool":
             continue  # Skip messages with role "tool"
         
