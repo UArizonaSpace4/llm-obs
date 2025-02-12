@@ -205,7 +205,7 @@ def handle_tool_call(function_name, arguments, tool_call_id):
             if "query" not in args_dict:
                 st.write("Error calling the database. Query not found")
             else:
-                query_obs_db(psql=args_dict.get("query"), params=args_dict.get("params"))
+                tool_error = query_obs_db(psql=args_dict.get("query"), params=args_dict.get("params"))
         case _:
             raise ValueError(f"Unknown function name: {function_name}")
         
