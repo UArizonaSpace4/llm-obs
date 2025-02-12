@@ -43,13 +43,16 @@ services:
       - LOCAL_GID=${GID}
     ports:
       - "${OBS_PLANNER_PORT}:1929"
+    privileged: true
     volumes:
       - type: bind
         source: "${SAT_PREDICTOR_OUTPUT_DIR}"
-        target: /home/wineuser/.wine/drive_c/ProgramData/SiTech/SatellitePredictor/SatTLEs/ # output
+        target: /usr/share/SiTech/SatellitePredictor/Output
         read_only: false
         bind:
           create_host_path: false # user must create it manually to avoid permission issues
+      - ./obs_planner/src:/observation-planner/src/
+      - ./obs_planner/configs:/observation-planner/configs/
 
 volumes:
   POSTGRES_data:

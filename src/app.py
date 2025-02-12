@@ -210,19 +210,20 @@ def handle_tool_call(function_name, arguments, tool_call_id):
             raise ValueError(f"Unknown function name: {function_name}")
         
     # Call the LLM to explain the results (No preset tools)
-    kwargs = preset.copy(); del kwargs['tools'] 
-    compl = askgpt(
-        user = "Answer the last user prompt",
-        system = system_prompt, 
-        context=prepare_context_messages(st.session_state.messages, 
-                                            n=None, exclude_tool=False,
-                                            exclude_types=EXCLUDE_TYPES),
-        stream=True,
-        store=STORE_CHATS,
-        metadata=dict(st_session_id=ctx.session_id),
-        **kwargs)
-    cntnt = st.write_stream(stream_response(compl))
-    st.session_state.messages.append({"role": "assistant", "content": cntnt})
+    if not tool_error:
+        kwargs = preset.copy(); del kwargs['tools'] 
+        compl = askgpt(
+            user = "Answer the last user prompt",
+            system = system_prompt, 
+            context=prepare_context_messages(st.session_state.messages, 
+                                                n=None, exclude_tool=False,
+                                                exclude_types=EXCLUDE_TYPES),
+            stream=True,
+            store=STORE_CHATS,
+            metadata=dict(st_session_id=ctx.session_id),
+            **kwargs)
+        cntnt = st.write_stream(stream_response(compl))
+        st.session_state.messages.append({"role": "assistant", "content": cntnt})
 
 
 def handle_user_prompt(prompt, context_window=4):   
