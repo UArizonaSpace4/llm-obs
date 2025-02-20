@@ -13,18 +13,20 @@ import utils
 from typing import List, Dict, Optional
 
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
-client = openai.OpenAI()
+API_KEY = os.getenv("OPENAI_API_KEY")
+BASE_URL = os.getenv("LLM_API_BASE_URL")
+client = openai.OpenAI(base_url=BASE_URL, api_key=API_KEY)
 
 def response(compl): print(nested_idx(compl, 'choices', 0, 'message', 'content'))
 
 
-def askgpt(user, system=None, model="gpt-4o", context=[], **kwargs):
+def askgpt(user, system=None, model="GPT-4o", context=[], **kwargs):
     msgs = []
     if system: msgs.append({"role": "system", "content": system})
     if context and len(context) > 0: msgs += context
     msgs.append({"role": "user", "content": user})
-    return client.chat.completions.create(model=model, messages=msgs, **kwargs)
+    ret = client.chat.completions.create(model=model, messages=msgs, **kwargs)
+    return ret
 
 
 def schema(f):

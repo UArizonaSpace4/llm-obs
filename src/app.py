@@ -1,6 +1,6 @@
 import sys
 import os
-import openai
+# import openai
 import streamlit as st
 import time
 import planner
@@ -11,7 +11,7 @@ import logging
 import pandas as pd
 from pathlib import Path
 import json
-from lm_hackers import askgpt, handle_stream_response_tool_calls, prepare_context_messages
+from lm_hackers_langchain import askgpt, handle_stream_response_tool_calls, prepare_context_messages
 import random
 from sqlalchemy import create_engine # for development
 from db import Base
@@ -19,6 +19,8 @@ from utils import display_and_save
 from utils import display_messages # for development
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 from datetime import datetime
+from langchain_core.tools import tool
+from langchain_core.messages import AIMessageChunk
 import weave
 
 # General config
@@ -35,7 +37,7 @@ DB_PASSWORD = os.environ.get('DB_PASSWORD', 'postgres')
 DB_NAME = os.environ.get('DB_NAME', 'your_database_name')
 EXCLUDE_TYPES= ["plot"] # types of messages to exclude from context
 
-weave.init(os.getenv("WEAVE_PROJECT_NAME"))
+# weave.init(os.getenv("WEAVE_PROJECT_NAME"))
 
 ctx = get_script_run_ctx()
 project_root = Path(__file__).parent.parent.absolute()
@@ -50,8 +52,8 @@ sys.path.append(obs_planner_root)
 import src as obs_planner # src refers to the src folder in the observation planner
 
 # Set up OpenAI API credentials
-openai.api_key = os.getenv("OPENAI_API_KEY")
-client = openai.OpenAI()
+# openai.api_key = os.getenv("OPENAI_API_KEY")
+# client = openai.OpenAI()
 
 
 #########################################################
@@ -84,10 +86,15 @@ def stream_response(compl, yield_in="content", sleep=0.01):
     """
     st.session_state["last_stream"] = []
     for chunk in compl:
-        content = getattr(chunk.choices[0].delta, yield_in, "")
+        if isinstance(chunk, AIMessageChunk):
+            content = chunk.content
+            last_stream = chunk
+        else:
+            content = getattr(chunk.choices[0].delta, yield_in, "")
+            last_stream = chunk.choices[0]
         if content is not None:
             yield content
-        st.session_state["last_stream"].append(chunk.choices[0])
+        st.session_state["last_stream"].append(last_stream)
         if sleep: time.sleep(0.01)  # Simulate delay for streaming effect
 
 
@@ -126,6 +133,13 @@ def run_observation_planner(*config_parameters, st_status):
 
 
 def query_obs_db(psql, params=None):
+    """
+    Query the observation database with the provided SQL query and parameters.
+
+    Args:
+        psql (str): The SQL query to execute
+        params (dict, optional): The parameters to pass to the SQL query
+    """
     tool_error = False
     with st.status("Querying the database...", state="running") as status:
         try:
@@ -232,20 +246,27 @@ def handle_user_prompt(prompt, context_window=4):
     Raises:
         Exception: If there is an error during the tool execution.
     """
+
     kwargs = preset.copy()
     context = prepare_context_messages(msgs=demonstrations + st.session_state.messages, 
                                        n=context_window, exclude_tool=False, 
                                        exclude_types=EXCLUDE_TYPES)
     compl = askgpt(user = prompt, system = system_prompt, context=context, 
                    stream=True, tool_choice="auto", parallel_tool_calls=False, 
-                   store=STORE_CHATS, 
+                   store=STORE_CHATS,
                    metadata=dict(st_session_id=ctx.session_id), **kwargs)
     # Stream the response
     with st.chat_message("assistant"):       
         assistant_response = st.write_stream(stream_response(compl))
         st.session_state.messages.append({"role": "assistant", "content": assistant_response})
 
-    if (st.session_state["last_stream"][-1].finish_reason == 'tool_calls'):
+    last_chunk = st.session_state["last_stream"][-1]
+    if isinstance(last_chunk, AIMessageChunk):
+        finish_reason = last_chunk.response_metadata['finish_reason']
+    else:
+        finish_reason = last_chunk.finish_reason
+
+    if  finish_reason == 'tool_calls':
         tool_calls = handle_stream_response_tool_calls()
         st.session_state.messages[-1].update({"tool_calls": tool_calls})
         try:
@@ -339,7 +360,7 @@ else:
     messages = st.session_state.messages
     if messages[-1]["role"] == "user":
         if len(messages) == 1:
-            cwin = len(demonstrations)
+            cwin = len(demonstrations) + len(messages)
         else:
             cwin = min(len(demonstrations) + len(messages), CONTEXT_WINDOW)
         handle_user_prompt(messages[-1]["content"], context_window=cwin)

@@ -10,3 +10,6 @@ SQLAlchemy
 fastcore
 psycopg2-binary
 weave
+langchain
+langchain-core
+langchain-openai
