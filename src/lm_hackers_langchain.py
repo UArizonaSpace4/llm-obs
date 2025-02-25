@@ -30,9 +30,9 @@ def askgpt(user, system=None, model="gpt-4o", context=[], **kwargs):
     if 'tools' in kwargs:
         client = client.bind_tools(kwargs['tools'])
     if system: msgs.append(SystemMessage(content=system))
-    if context and len(context) > 0: msgs += context[:2]
-    msgs.append(HumanMessage(content=user))
-    ret = client.invoke(msgs)
+    if context and len(context) > 0: msgs += context
+    # msgs.append(HumanMessage(content=user))
+    ret = client.stream(msgs)
     return ret
 
 
@@ -88,9 +88,9 @@ def prepare_context_messages(msgs: List[Dict[str, any] | BaseMessage], n: Option
         prepared_message["content"] = "\n".join(serialized_items)
 
         if message['role'] == 'tool':
-            new_message = role_to_class[message["role"]](content=content, tool_call_id=message["tool_call_id"])
+            new_message = role_to_class[message["role"]](content=prepared_message['content'], tool_call_id=message["tool_call_id"])
         else:
-            new_message = role_to_class[message["role"]](content=content)
+            new_message = role_to_class[message["role"]](content=prepared_message['content'])
         if "tool_calls" in prepared_message:
             for tc in prepared_message["tool_calls"]:
                 new_message.tool_calls.append(

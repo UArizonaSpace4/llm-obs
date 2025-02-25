@@ -20,7 +20,9 @@ from utils import display_messages # for development
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 from datetime import datetime
 from langchain_core.tools import tool
-from langchain_core.messages import AIMessageChunk
+from langchain_core.messages import AIMessageChunk, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
 import weave
 
 # General config
@@ -248,9 +250,12 @@ def handle_user_prompt(prompt, context_window=4):
     """
 
     kwargs = preset.copy()
-    context = prepare_context_messages(msgs=demonstrations + st.session_state.messages, 
+
+    context = prepare_context_messages(msgs=st.session_state.messages, 
                                        n=context_window, exclude_tool=False, 
                                        exclude_types=EXCLUDE_TYPES)
+
+    
     compl = askgpt(user = prompt, system = system_prompt, context=context, 
                    stream=True, tool_choice="auto", parallel_tool_calls=False, 
                    store=STORE_CHATS,
