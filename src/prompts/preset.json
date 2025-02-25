@@ -19,7 +19,6 @@
       "type": "function",
       "function": {
         "name": "run_observation_planner",
-        "strict": true,
         "parameters": {
           "type": "object",
           "required": [
@@ -44,7 +43,6 @@
       "type": "function",
       "function": {
         "name": "query_obs_db",
-        "strict": true,
         "parameters": {
           "type": "object",
           "required": [
@@ -54,7 +52,7 @@
           "properties": {
             "query": {
               "type": "string",
-              "description": "The SQL query string to execute against the PostgreSQL observations database."
+              "description": "The SQL query string to execute against the PostgreSQL observations database. This query must be valid SQL syntax for PostgreSQL. All the arguments in the query must be bound to the params array."
             },
             "params": {
               "type": "array",

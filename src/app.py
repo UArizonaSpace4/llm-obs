@@ -223,6 +223,7 @@ def handle_tool_call(function_name, arguments, tool_call_id):
         
     # Call the LLM to explain the results (No preset tools)
     kwargs = preset.copy(); del kwargs['tools'] 
+    kwargs.pop("model")
     compl = askgpt(
         user = "Answer the last user prompt",
         system = system_prompt, 
@@ -250,6 +251,7 @@ def handle_user_prompt(prompt, context_window=4):
     """
 
     kwargs = preset.copy()
+    kwargs.pop("model")
 
     context = prepare_context_messages(msgs=st.session_state.messages, 
                                        n=context_window, exclude_tool=False, 

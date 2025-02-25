@@ -18,13 +18,14 @@ from collections import defaultdict
 
 API_KEY = os.getenv("OPENAI_API_KEY")
 BASE_URL = os.getenv("LLM_API_BASE_URL")
+MODEL = os.getenv("LLM_MODEL")
 # client = openai.OpenAI(base_url=BASE_URL, api_key=API_KEY)
 
 
 def response(compl): print(nested_idx(compl, 'choices', 0, 'message', 'content'))
 
 
-def askgpt(user, system=None, model="gpt-4o", context=[], **kwargs):
+def askgpt(user, system=None, model=MODEL, context=[], **kwargs):
     client = ChatOpenAI(model_name=model, base_url=BASE_URL, api_key=API_KEY)
     msgs = []
     if 'tools' in kwargs:
